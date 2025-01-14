@@ -1,0 +1,56 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Dependencies
+vendor/
+
+# Environment
+.env
+.env.local
+
+# Build
+bin/
+dist/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# Docker
+.docker/
+
+# Node (for Hardhat)
+node_modules/
+coverage/
+coverage.json
+typechain/
+typechain-types/
+
+# Hardhat
+cache/
+artifacts/
+
+# Flink
+flink-checkpoints/
+flink-jobs/
+target/
+*.jar
+
+# Mac
+.DS_Store 
