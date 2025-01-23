@@ -14,7 +14,7 @@ services:
         state.checkpoints.dir: file:///flink-checkpoints
     volumes:
       - ./flink-checkpoints:/flink-checkpoints
-      - ./flink-jobs:/opt/flink/jobs
+      - ./aggregator/target:/opt/flink/jobs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/overview"]
       interval: 30s
@@ -37,21 +37,36 @@ services:
         state.checkpoints.dir: file:///flink-checkpoints
     volumes:
       - ./flink-checkpoints:/flink-checkpoints
+      - ./aggregator/target:/opt/flink/jobs
 
   job-deployer:
     image: flink:1.14.4-java11
     depends_on:
       jobmanager:
         condition: service_healthy
+      kafka:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: on-failure:3
     command: >
       /bin/bash -c "
         echo 'Waiting for JobManager to be ready...' &&
-        sleep 60 &&
-        echo 'Deploying Flink job...' &&
-        flink run -d -m jobmanager:8081 /opt/flink/jobs/twilight-flink-job.jar
+        until curl -s jobmanager:8081/overview > /dev/null; do
+          echo 'Waiting for JobManager...' &&
+          sleep 5;
+        done &&
+        echo 'JobManager is ready!' &&
+        echo 'Checking for existing jobs...' &&
+        if ! flink list -m jobmanager:8081 | grep 'aggregator'; then
+          echo 'Deploying Flink job...' &&
+          flink run -d -m jobmanager:8081 -c com.twilight.aggregator.job.PairMetricsJob /opt/flink/jobs/aggregator-1.0-SNAPSHOT.jar;
+        else
+          echo 'Job is already running';
+        fi
       "
     volumes:
-      - ./flink-jobs:/opt/flink/jobs
+      - ./aggregator/target:/opt/flink/jobs
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.1
@@ -102,11 +117,31 @@ services:
     environment:
       POSTGRES_USER: twilight
       POSTGRES_PASSWORD: twilight123
-      POSTGRES_DB: twilightdb
+      POSTGRES_DB: twilight
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts:/scripts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U twilight"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  init-db:
+    image: postgres:13
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: twilight
+      POSTGRES_PASSWORD: twilight123
+      TEST_ENV: "true"
+    volumes:
+      - ./scripts:/scripts
+    command: ["/scripts/init.sh"]
 
 volumes:
   zookeeper_data:

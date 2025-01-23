@@ -10,14 +10,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-
-	"twilight/chain"
-	"twilight/pkg/config"
-	"twilight/pkg/kafka"
+	"github.com/twilight/common/pkg/config"
+	"github.com/twilight/common/pkg/kafka"
+	chain "github.com/twilight/listener/pkg"
 )
 
 var (
-	configFile     = flag.String("config", "../../configs/config.yaml", "Path to configuration file")
+	configFile     = flag.String("config", "../../common/pkg/config/config.yaml", "Path to configuration file")
 	deploymentFile = flag.String("deployment", "../../deployment.json", "Path to deployment configuration file")
 )
 
@@ -74,6 +73,9 @@ func main() {
 		pairContract.AddEventType("Swap", common.HexToHash("0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822"))
 		pairContract.AddEventType("Mint", common.HexToHash("0x4c209b5fc8ad50758f13e2e1088ba56a560dff690a1c6fef26394f4c03821c4f"))
 		pairContract.AddEventType("Burn", common.HexToHash("0xdccd412f0b1252819cb1fd330b93224ca42612892bb3f4f789976e6d81936496"))
+		pairContract.AddEventType("Sync", common.HexToHash("0x1c411e9a96e071241c2f21f7726b17ae89e3cab4c78be50e062b03a9fffbbad1"))
+		pairContract.AddEventType("Transfer", common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"))
+
 		listener.AddContract(pairAddr, pairContract)
 		log.Printf("Added pair contract at %s", pair.Address)
 	}

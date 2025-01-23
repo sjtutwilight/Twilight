@@ -5,8 +5,8 @@ const path = require("path");
 
 // Simulation parameters
 const SWAP_PROBABILITY = 0.6;  // 60% chance of swap vs liquidity operations
-const MIN_DELAY = 1000;  // 1 second
-const MAX_DELAY = 6000;  // 6 seconds
+const MIN_DELAY = 5000;  // 1 second
+const MAX_DELAY = 30000;  // 6 seconds
 
 // Token price ratios (approximate)
 const TOKEN_CONFIGS = {

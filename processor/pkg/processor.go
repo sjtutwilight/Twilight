@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"twilight/pkg/types"
+	"github.com/twilight/common/pkg/types"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -112,13 +112,19 @@ func (p *Processor) ProcessTransaction(ctx context.Context, tx *types.Transactio
 	}
 
 	// Process events
-	eventProcessor := NewEventProcessor(p.db)
+	pairProcessor := NewPairProcessor(p.db)
 	for _, event := range events {
 		event.TransactionID = txID
 		event.CreateTime = time.Now()
 
-		if err := eventProcessor.ProcessEvent(ctx, dbTx, &event); err != nil {
-			return &ProcessorError{Op: "process_event", Err: err}
+		// Insert event record
+		if err := p.insertEventRecord(ctx, dbTx, &event); err != nil {
+			return &ProcessorError{Op: "insert_event", Err: err}
+		}
+
+		// Process pair-related events
+		if err := pairProcessor.ProcessPairEvent(ctx, dbTx, &event); err != nil {
+			return &ProcessorError{Op: "process_pair_event", Err: err}
 		}
 	}
 
@@ -127,6 +133,14 @@ func (p *Processor) ProcessTransaction(ctx context.Context, tx *types.Transactio
 		return &ProcessorError{Op: "commit_transaction", Err: err}
 	}
 
+	return nil
+}
+
+func (p *Processor) insertEventRecord(ctx context.Context, tx *sqlx.Tx, event *types.Event) error {
+	_, err := p.insertEventStmt.Exec(event)
+	if err != nil {
+		return fmt.Errorf("failed to insert event: %v", err)
+	}
 	return nil
 }
 

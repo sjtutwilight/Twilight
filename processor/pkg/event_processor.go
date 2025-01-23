@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"twilight/pkg/types"
+	"github.com/twilight/common/pkg/types"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -39,10 +39,8 @@ func (p *EventProcessor) ProcessEvent(ctx context.Context, tx *sqlx.Tx, event *t
 	switch event.EventName {
 	case "PairCreated":
 		err = p.processPairCreated(ctx, tx, event)
-	case "Sync":
-		err = p.processSync(ctx, tx, event)
-	}
 
+	}
 	if err != nil {
 		return &ProcessorError{
 			Op:  "process_" + event.EventName,
@@ -53,7 +51,7 @@ func (p *EventProcessor) ProcessEvent(ctx context.Context, tx *sqlx.Tx, event *t
 	return nil
 }
 
-// insertEvent inserts an event record
+// insertEvent inserts an event record into the database
 func (p *EventProcessor) insertEvent(ctx context.Context, tx *sqlx.Tx, event *types.Event) error {
 	_, err := tx.NamedExecContext(ctx, `
 		INSERT INTO event (
@@ -63,7 +61,10 @@ func (p *EventProcessor) insertEvent(ctx context.Context, tx *sqlx.Tx, event *ty
 			:transaction_id, :chain_id, :event_name, :contract_address,
 			:log_index, :event_data, :create_time, :block_number
 		)`, event)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to insert event: %w", err)
+	}
+	return nil
 }
 
 // processPairCreated handles PairCreated events
@@ -123,33 +124,6 @@ func (p *EventProcessor) processPairCreated(ctx context.Context, tx *sqlx.Tx, ev
 
 	if err != nil {
 		return fmt.Errorf("failed to create pair record: %w", err)
-	}
-
-	return nil
-}
-
-// processSync handles Sync events to update reserves
-func (p *EventProcessor) processSync(ctx context.Context, tx *sqlx.Tx, event *types.Event) error {
-	// Decode event data
-	decoded, err := types.DecodeEvent(event.EventData)
-	if err != nil {
-		return fmt.Errorf("failed to decode Sync event: %w", err)
-	}
-
-	// Extract reserves
-	reserve0 := types.ToBigInt(decoded.Args["reserve0"])
-	reserve1 := types.ToBigInt(decoded.Args["reserve1"])
-
-	// Update pair reserves
-	_, err = tx.ExecContext(ctx, `
-		UPDATE pair 
-		SET reserve0 = $1,
-			reserve1 = $2,
-			update_time = NOW()
-		WHERE pair_address = $3
-	`, reserve0.String(), reserve1.String(), event.ContractAddress)
-	if err != nil {
-		return fmt.Errorf("failed to update pair reserves: %w", err)
 	}
 
 	return nil
