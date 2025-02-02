@@ -7,6 +7,9 @@ import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import lombok.Data;
+
+@Data
 public class Event implements Serializable {
     private static final long serialVersionUID = 1L;
     private static transient final ObjectMapper MAPPER = new ObjectMapper();
@@ -21,7 +24,7 @@ public class Event implements Serializable {
     private String contractAddress;
     
     @JsonProperty("logIndex")
-    private int logIndex;
+    private Integer logIndex;
     
     @JsonProperty("eventData")
     private String eventData;
@@ -34,6 +37,9 @@ public class Event implements Serializable {
  
     @JsonProperty("decodedArgs")
     private Map<String, Object> decodedArgs;
+
+    @JsonProperty("fromAddress")
+    private String fromAddress;
 
     // Default constructor required by Flink
     public Event() {}
@@ -109,5 +115,13 @@ public class Event implements Serializable {
 
     public void setDecodedArgs(Map<String, Object> decodedArgs) {
         this.decodedArgs = decodedArgs;
+    }
+
+    public String getFromAddress() {
+        return fromAddress;
+    }
+
+    public void setFromAddress(String fromAddress) {
+        this.fromAddress = fromAddress;
     }
 } 

@@ -3,10 +3,13 @@
 # Build the project
 mvn clean package
 
-# Submit to remote Flink cluster
-flink run \
-  -m flink-jobmanager:8081 \
-  --class com.twilight.aggregator.job.PairMetricsJob \
-  -p 4 \
-  --detached \
-  target/aggregator-1.0-SNAPSHOT-shaded.jar 
+# 运行指定的job或所有job
+if [ "$RUN_ALL" = true ]; then
+  # 运行所有job
+  java $JAVA_OPTS -cp target/aggregator-1.0-SNAPSHOT.jar \
+    com.twilight.aggregator.job.PairMetricsJob &
+  java $JAVA_OPTS -cp target/aggregator-1.0-SNAPSHOT.jar \
+    com.twilight.aggregator.job.TokenMetricsJob &
+else
+  # 运行指定的job
+  java $JAVA_OPTS -cp target/aggregator-1.0-SNAPSHOT.jar $JOB_CLASS 

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   jobmanager:
-    image: flink:1.14.4-java11
+    image: flink:1.19.1-java11
     ports:
       - "8081:8081"
     command: jobmanager
@@ -23,7 +23,7 @@ services:
       start_period: 30s
 
   taskmanager:
-    image: flink:1.14.4-java11
+    image: flink:1.19.1-java11
     depends_on:
       - jobmanager
     command: taskmanager
@@ -32,15 +32,30 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 2
+        taskmanager.numberOfTaskSlots: 10
         state.backend: filesystem
         state.checkpoints.dir: file:///flink-checkpoints
     volumes:
       - ./flink-checkpoints:/flink-checkpoints
       - ./aggregator/target:/opt/flink/jobs
 
+  redis:
+    image: redis:7.2
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
   job-deployer:
-    image: flink:1.14.4-java11
+    image: flink:1.19.1-java11
     depends_on:
       jobmanager:
         condition: service_healthy
@@ -48,11 +63,24 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: on-failure:3
+    environment:
+      - APP_ENV=PROD
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - INPUT_TOPIC=chain_transactions_new
+      - KAFKA_GROUP_ID=pair_metrics_processor
+      - JDBC_URL=jdbc:postgresql://postgres:5432/twilight
+      - JDBC_USER=twilight
+      - JDBC_PASSWORD=twilight123
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
     command: >
       /bin/bash -c "
         echo 'Waiting for JobManager to be ready...' &&
-        until curl -s jobmanager:8081/overview > /dev/null; do
+        until curl -s jobmanager:8081/overview; do
           echo 'Waiting for JobManager...' &&
           sleep 5;
         done &&
@@ -60,7 +88,7 @@ services:
         echo 'Checking for existing jobs...' &&
         if ! flink list -m jobmanager:8081 | grep 'aggregator'; then
           echo 'Deploying Flink job...' &&
-          flink run -d -m jobmanager:8081 -c com.twilight.aggregator.job.PairMetricsJob /opt/flink/jobs/aggregator-1.0-SNAPSHOT.jar;
+          flink run -d -m jobmanager:8081 -c com.twilight.aggregator.AggregatorJob /opt/flink/jobs/aggregator-1.0-SNAPSHOT.jar;
         else
           echo 'Job is already running';
         fi
@@ -95,7 +123,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_PARTITIONS: 4
     volumes:
       - kafka_data:/var/lib/kafka/data
 
@@ -143,8 +171,21 @@ services:
       - ./scripts:/scripts
     command: ["/scripts/init.sh"]
 
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    ports:
+      - "8082:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+
+  
+
 volumes:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
-  postgres_data: 
+  postgres_data:
+  redis_data: 

@@ -11,8 +11,8 @@ const MAX_DELAY = 30000;  // 6 seconds
 // Token price ratios (approximate)
 const TOKEN_CONFIGS = {
   'WETH': {
-    baseAmount: [1, 10],      // 1-10 ETH
-    priceUSD: 2200            // Reference price
+    baseAmount: [0.1, 1],     // 0.1-1 ETH (smaller amounts for higher price)
+    priceUSD: 3000            // $3000 per ETH
   },
   'USDC': {
     baseAmount: [100, 10000], // 100-10000 USDC
@@ -24,11 +24,11 @@ const TOKEN_CONFIGS = {
   },
   'TWI': {
     baseAmount: [10, 1000],   // 10-1000 TWI
-    priceUSD: 20              // Example price
+    priceUSD: 50              // $50 per TWI
   },
   'WBTC': {
-    baseAmount: [0.1, 1],     // 0.1-1 WBTC
-    priceUSD: 42000           // Reference price
+    baseAmount: [0.01, 0.1],  // 0.01-0.1 BTC (smaller amounts for higher price)
+    priceUSD: 120000          // $120000 per BTC
   }
 };
 

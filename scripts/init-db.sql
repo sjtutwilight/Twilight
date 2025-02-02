@@ -29,16 +29,18 @@ CREATE TABLE if not exists event (
   block_number BIGINT
 );
 CREATE TABLE if not exists token (
-  id BIGSERIAL PRIMARY KEY,
-  chain_id VARCHAR(64),
-  token_address VARCHAR(128) NOT NULL,
-  token_symbol VARCHAR(32),
-  token_name VARCHAR(128),
-  token_decimals INT,
-  trust_score DECIMAL(5,2),
-  create_time TIMESTAMP,
-  update_time TIMESTAMP,
-
+  id                BIGSERIAL     PRIMARY KEY,
+  chain_id          VARCHAR(64),
+  chain_name        VARCHAR(128),
+  token_address     VARCHAR(128) NOT NULL,
+  token_symbol      VARCHAR(32),
+  token_name        VARCHAR(128),
+  token_decimals    INT,
+  hype_score        INT,                 -- 随机或自定义算法
+  supply_usd        DECIMAL(38,18),      -- FDV
+  liquidity_usd     DECIMAL(38,18),      -- 总流动性估算
+  create_time       TIMESTAMP,
+  update_time       TIMESTAMP,
   UNIQUE (chain_id, token_address)
 );
 CREATE TABLE if not exists twswap_factory (
@@ -57,18 +59,19 @@ CREATE TABLE if not exists twswap_factory (
   UNIQUE (chain_id, factory_address, time_window, end_time)
 );
 CREATE TABLE if not exists token_metric (
-  id           BIGSERIAL      PRIMARY KEY,
-  token_id     BIGINT         NOT NULL REFERENCES token(id) ON DELETE CASCADE,
-  time_window  VARCHAR(16),   -- '30s','5min','30min','1h','total'
-  end_time     TIMESTAMP,     -- 窗口结束时间
-
-  supply_usd   DECIMAL(38,18),
-  volume_usd   DECIMAL(38,18),
-  txcnt        INT,
-
-  -- 可选更新时间
-  update_time  TIMESTAMP,
-
+  id                  BIGSERIAL PRIMARY KEY,
+  token_id            BIGINT NOT NULL REFERENCES token(id) ON DELETE CASCADE,
+  time_window         VARCHAR(16),   -- '20s','1min','5min','30min','1h'
+  end_time            TIMESTAMP,
+  volume_usd          DECIMAL(38,18),  -- 指定窗口内交易量
+  txcnt               INT,             -- 交易笔数
+  token_price_usd     DECIMAL(38,18),  -- token价格
+  buy_pressure_usd    DECIMAL(38,18),  -- (buy_volume - sell_volume)
+  buyers_count        INT,
+  sellers_count       INT,
+  buy_volume_usd      DECIMAL(38,18),
+  sell_volume_usd     DECIMAL(38,18),
+  update_time         TIMESTAMP,
   UNIQUE (token_id, time_window, end_time)
 );
 CREATE TABLE if not exists twswap_token_metric (
@@ -86,8 +89,7 @@ CREATE TABLE if not exists twswap_token_metric (
 
   UNIQUE (token_id, time_window, end_time)
 );
-
-    CREATE TABLE if not exists twswap_pair (
+CREATE TABLE if not exists twswap_pair (
   id                     BIGSERIAL     PRIMARY KEY,
   chain_id               VARCHAR(64),
   pair_address           VARCHAR(128)  NOT NULL,
@@ -116,3 +118,8 @@ CREATE TABLE if not exists twswap_pair_metric (
   UNIQUE (pair_id, time_window, end_time)
 );
 
+ALTER TABLE token_metric ADD COLUMN makers_count INT;
+ALTER TABLE token_metric ADD COLUMN buy_count INT;
+ALTER TABLE token_metric ADD COLUMN sell_count INT;
+CREATE INDEX idx_token_metric_time_window ON token_metric (token_id, time_window, end_time);
+CREATE INDEX idx_token_metric_latest ON token_metric (token_id, time_window, end_time DESC);

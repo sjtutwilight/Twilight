@@ -1,0 +1,225 @@
+type Transaction {
+  id: ID!
+  chainId: String!
+  transactionHash: String!
+  blockNumber: Int!
+  blockTimestamp: String!
+  fromAddress: String!
+  toAddress: String!
+  methodName: String
+  transactionStatus: Int!
+  gasUsed: Int!
+  inputData: String
+  createTime: String!
+  events: [Event!]
+}
+
+type Event {
+  id: ID!
+  transactionId: ID!
+  chainId: String!
+  eventName: String!
+  contractAddress: String!
+  logIndex: Int!
+  eventData: String!
+  createTime: String!
+  blockNumber: Int!
+  transaction: Transaction!
+}
+
+type Token {
+  id: ID!
+  chainId: String!
+  chainName: String
+  tokenAddress: String!
+  tokenSymbol: String
+  tokenName: String
+  tokenDecimals: Int
+  hypeScore: Int
+  supplyUsd: String
+  liquidityUsd: String
+  createTime: String!
+  updateTime: String!
+  currentPrice: String
+  priceChange1h: String
+  volume1h: String
+  buyPressure1h: String
+  metrics: [TokenMetric!]
+  pairs: [TwswapPair!]
+}
+
+type TokenMetric {
+  id: ID!
+  tokenId: ID!
+  timeWindow: String!
+  endTime: String!
+  volumeUsd: String
+  txcnt: Int
+  tokenPriceUsd: String
+  buyPressureUsd: String
+  buyersCount: Int
+  sellersCount: Int
+  buyVolumeUsd: String
+  sellVolumeUsd: String
+  makersCount: Int
+  buyCount: Int
+  sellCount: Int
+  updateTime: String!
+  token: Token!
+}
+
+type TwswapFactory {
+  id: ID!
+  chainId: String!
+  factoryAddress: String!
+  timeWindow: String!
+  endTime: String!
+  pairCount: Int!
+  volumeUsd: String!
+  liquidityUsd: String!
+  txcnt: Int!
+  updateTime: String!
+}
+
+type TwswapPair {
+  id: ID!
+  chainId: String!
+  pairAddress: String!
+  token0: Token!
+  token1: Token!
+  feeTier: String!
+  createdAtTimestamp: String!
+  createdAtBlockNumber: Int!
+  metrics: [TwswapPairMetric!]
+}
+
+type TwswapPairMetric {
+  id: ID!
+  pairId: ID!
+  timeWindow: String!
+  endTime: String!
+  token0Reserve: String!
+  token1Reserve: String!
+  reserveUsd: String!
+  token0VolumeUsd: String!
+  token1VolumeUsd: String!
+  volumeUsd: String!
+  txcnt: Int!
+  pair: TwswapPair!
+}
+
+type TimeSeriesDataPoint {
+  timestamp: String!
+  tokenPriceUsd: String
+  buyVolumeUsd: String
+  sellVolumeUsd: String
+  volumeUsd: String
+  txcnt: Int
+  makersCount: Int
+  buyCount: Int
+  sellCount: Int
+  buyersCount: Int
+  sellersCount: Int
+}
+
+type TokenAnalytics {
+  token: Token!
+  timeWindow: String!
+  dataPoints: [TimeSeriesDataPoint!]!
+}
+
+type TokenStats {
+  token: Token!
+  currentPrice: String!
+  priceChange1h: String!
+  volume1h: String!
+  buyPressure1h: String!
+  lastUpdate: String!
+}
+
+type Query {
+  # Transaction queries
+  transaction(id: ID!): Transaction
+  transactionByHash(chainId: String!, hash: String!): Transaction
+  transactions(
+    chainId: String
+    fromBlock: Int
+    toBlock: Int
+    limit: Int = 10
+    offset: Int = 0
+  ): [Transaction!]!
+
+  # Token queries
+  token(id: ID!): Token
+  tokenByAddress(chainId: String!, address: String!): Token
+  tokens(
+    chainId: String
+    limit: Int = 10
+    offset: Int = 0
+  ): [Token!]!
+
+  # Pair queries
+  pair(id: ID!): TwswapPair
+  pairByAddress(chainId: String!, address: String!): TwswapPair
+  pairs(
+    chainId: String
+    token0Address: String
+    token1Address: String
+    limit: Int = 10
+    offset: Int = 0
+  ): [TwswapPair!]!
+
+  # Metrics queries
+  tokenMetrics(
+    tokenId: ID!
+    timeWindow: String!
+    fromTime: String
+    toTime: String
+    limit: Int = 10
+  ): [TokenMetric!]!
+
+  tokenAnalytics(
+    tokenId: ID!
+    timeWindow: String!
+    from: String!
+    to: String!
+  ): TokenAnalytics!
+
+  pairMetrics(
+    pairId: ID!
+    timeWindow: String!
+    fromTime: String
+    toTime: String
+    limit: Int = 10
+  ): [TwswapPairMetric!]!
+
+  # Factory queries
+  factoryMetrics(
+    chainId: String!
+    factoryAddress: String!
+    timeWindow: String!
+    fromTime: String
+    toTime: String
+    limit: Int = 10
+  ): [TwswapFactory!]!
+
+  tokenStats(tokenId: ID!): TokenStats!
+  
+  tokenMetricsByWindow(
+    tokenId: ID!
+    timeWindow: String!
+  ): TokenMetric
+
+  tokensStats(
+    tokenIds: [ID!]!
+  ): [TokenStats!]!
+}
+
+type Subscription {
+  tokenStatsUpdated(tokenId: ID!): TokenStats!
+  
+  tokenMetricsUpdated(
+    tokenId: ID!
+    timeWindow: String!
+  ): TokenMetric!
+} 

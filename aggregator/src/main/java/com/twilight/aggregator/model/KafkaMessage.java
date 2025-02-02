@@ -4,10 +4,13 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import lombok.Data;
+
+@Data
 public class KafkaMessage {
     @JsonProperty("transaction")
     private Transaction transaction;
-
+    
     @JsonProperty("events")
     private List<Event> events;
 

@@ -11,7 +11,7 @@
 5. **CQRS同步器（synchronizer）**：使用CQRS模式将数据库A数据映射到数据库B（读库）
 6. **统一查询器(uniQuery)**，为前端提供统一查询服务，以可视化方式呈现交易趋势、流动性风险等。
 7. **决策大脑(brain)**：整个系统的调控中心，目前需求功能：接入事件（链上事件、用户事件），根据预设的策略编排（DAG）进行节点调度
-
+  
 ## 数据流图
 
 ```mermaid 
@@ -33,7 +33,7 @@ flowchart LR
 ```
 
 ## 项目约定
-1.链合约部署信息位于 deployment.json 2.相同含义字段名称统一，比如只使用transactionHash而不使用txHash，如果外部依赖命名与系统约定不一致，转换成系统约定。3.数据库表结构位置 TableStructure.md 4.使用usdc作为唯一美元价格锚定，代币价格为与usdc交易对价格，交易对一定存在
+1.链合约部署信息位于 deployment.json 2.相同含义字段名称统一，比如只使用transactionHash而不使用txHash，如果外部依赖命名与系统约定不一致，转换成系统约定。3.数据库表结构位置 TableStructure.md 4.使用usdc作为唯一美元价格锚定，代币价格为与usdc交易对价格，交易对一定存在 5.使用项目根目录的docker-compose.yml作为唯一docker容器
 
 ## 指标唯一标准
 
@@ -55,7 +55,7 @@ flowchart LR
 
 # 数据格式
 ## kafka格式
-### topic:chain_transactions
+### topic:chain_transactions_new
 ```json
 {    "transaction": {
       "type": "object",
@@ -256,5 +256,6 @@ sequenceDiagram
 # 链监听器
 流程：
 1. 使用 go-ethereum 的 ethclient 连接 http://127.0.0.1:8545，监听区块及拉取日志。
-2. 解析链数据，聚合成transaction维度，发送到 Kafka（Topic: chain_transactions）。
+2. 解析链数据，聚合成transaction维度，发送到 Kafka（Topic: chain_transactions_new）。
+
 

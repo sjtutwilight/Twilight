@@ -21,7 +21,7 @@ type KafkaConfig struct {
 }
 
 type TopicsConfig struct {
-	ChainTransactions string `yaml:"chain_transactions"`
+	ChainTransactions string `yaml:"chain_transactions_new"`
 }
 
 type PostgresConfig struct {

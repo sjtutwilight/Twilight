@@ -6,4 +6,7 @@ JAVA_OPTS="--add-opens java.base/java.util=ALL-UNNAMED \
 
 mvn clean package -DskipTests
 
-java $JAVA_OPTS -jar target/aggregator-1.0-SNAPSHOT.jar 
+# Run AggregatorJob
+java $JAVA_OPTS -cp target/aggregator-1.0-SNAPSHOT.jar com.twilight.aggregator.AggregatorJob
+
+echo "Job submitted successfully!" 
