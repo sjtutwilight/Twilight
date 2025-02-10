@@ -9,11 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sjtutwilight/Twilight/common/pkg/types"
+
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/spf13/viper"
-	"github.com/twilight/common/pkg/types"
 )
 
 // EventListener handles blockchain event monitoring

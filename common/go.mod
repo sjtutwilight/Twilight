@@ -1,11 +1,11 @@
-module github.com/twilight/common
+module github.com/sjtutwilight/Twilight/common
 
-go 1.22
+go 1.22.5
 
 require (
 	github.com/IBM/sarama v1.45.0
 	github.com/ethereum/go-ethereum v1.13.5
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (

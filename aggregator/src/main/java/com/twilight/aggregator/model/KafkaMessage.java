@@ -1,18 +1,25 @@
 package com.twilight.aggregator.model;
 
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
-public class KafkaMessage {
+@NoArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class KafkaMessage implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     @JsonProperty("transaction")
     private Transaction transaction;
-    
+
     @JsonProperty("events")
-    private List<Event> events;
+    private List<Event> events = new ArrayList<>();
 
     // Getters and Setters
     public Transaction getTransaction() {
@@ -30,4 +37,4 @@ public class KafkaMessage {
     public void setEvents(List<Event> events) {
         this.events = events;
     }
-} 
+}

@@ -2,6 +2,23 @@
   "factory": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
   "router": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
   "initCodeHash": "0x76469daa17193c2cb8201b38d0f69f0ed1a0d1a27d43d380ee44cb26174ddd2e",
+  "accounts": [
+    {
+      "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    },
+    {
+      "address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+    },
+    {
+      "address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+    },
+    {
+      "address": "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+    },
+    {
+      "address": "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"
+    }
+  ],
   "tokens": [
     {
       "address": "0x74A6379d012ce53E3b0718C05dD72a3De87F0c6a",

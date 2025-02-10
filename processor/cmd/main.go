@@ -8,20 +8,19 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
-	db "github.com/twilight/processor/pkg"
+	"github.com/sjtutwilight/Twilight/common/pkg/config"
+	"github.com/sjtutwilight/Twilight/common/pkg/types"
+	db "github.com/sjtutwilight/Twilight/processor/pkg"
 
 	"github.com/segmentio/kafka-go"
-	"github.com/twilight/common/pkg/config"
-	"github.com/twilight/common/pkg/types"
 )
 
 var (
 	configFile   = flag.String("config", "../../common/pkg/config/config.yaml", "Path to configuration file")
-	workspaceDir = flag.String("workspace", "../..", "Path to workspace directory")
+	workspaceDir = flag.String("workspace", "..", "Path to workspace directory")
 )
 
 func main() {
@@ -51,17 +50,6 @@ func main() {
 	}
 	defer processor.Close()
 
-	// Initialize from deployment.json
-	workspacePath, err := filepath.Abs(*workspaceDir)
-	if err != nil {
-		log.Fatalf("Failed to get absolute workspace path: %v", err)
-	}
-
-	if err := processor.InitializeFromDeployment(workspacePath); err != nil {
-		log.Fatalf("Failed to initialize from deployment: %v", err)
-	}
-	log.Println("Successfully initialized from deployment.json")
-
 	// Create context that will be canceled on interrupt
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -72,9 +60,10 @@ func main() {
 
 	// Create Kafka reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: cfg.Kafka.Brokers,
-		Topic:   cfg.Kafka.Topics.ChainTransactions,
-		GroupID: "datamanager",
+		Brokers:     cfg.Kafka.Brokers,
+		Topic:       cfg.Kafka.Topics.ChainTransactions,
+		StartOffset: kafka.LastOffset,
+		GroupID:     "datamanager",
 	})
 	defer reader.Close()
 
@@ -91,56 +80,82 @@ func main() {
 					continue
 				}
 
+				// Log raw message for debugging
+
 				// Parse transaction message
-				var tx struct {
-					BlockNumber      int64         `json:"blockNumber"`
-					BlockHash        string        `json:"blockHash"`
-					Timestamp        int64         `json:"timestamp"`
-					TransactionHash  string        `json:"transactionHash"`
-					TransactionIndex int           `json:"transactionIndex"`
-					Status           string        `json:"status"`
-					GasUsed          uint64        `json:"gasUsed"`
-					GasPrice         string        `json:"gasPrice"`
-					Nonce            int           `json:"nonce"`
-					From             string        `json:"from"`
-					To               string        `json:"to"`
-					Value            string        `json:"value"`
-					InputData        string        `json:"inputData"`
-					Events           []types.Event `json:"events"`
+				var chainEvent struct {
+					Transaction struct {
+						BlockNumber       int64  `json:"blockNumber"`
+						BlockHash         string `json:"blockHash"`
+						Timestamp         int64  `json:"timestamp"`
+						TransactionHash   string `json:"transactionHash"`
+						TransactionIndex  int    `json:"transactionIndex"`
+						TransactionStatus string `json:"transactionStatus"`
+						GasUsed           int64  `json:"gasUsed"`
+						GasPrice          string `json:"gasPrice"`
+						Nonce             uint64 `json:"nonce"`
+						FromAddress       string `json:"fromAddress"`
+						ToAddress         string `json:"toAddress"`
+						TransactionValue  string `json:"transactionValue"`
+						InputData         string `json:"inputData"`
+						ChainID           string `json:"chainID"`
+					} `json:"transaction"`
+					Events []struct {
+						EventName       string                 `json:"eventName"`
+						ContractAddress string                 `json:"contractAddress"`
+						LogIndex        int                    `json:"logIndex"`
+						BlockNumber     int64                  `json:"blockNumber"`
+						Topics          []string               `json:"topics"`
+						EventData       string                 `json:"eventData"`
+						DecodedArgs     map[string]interface{} `json:"decodedArgs"`
+					} `json:"events"`
 				}
 
-				if err := json.Unmarshal(msg.Value, &tx); err != nil {
+				if err := json.Unmarshal(msg.Value, &chainEvent); err != nil {
 					log.Printf("Error parsing message: %v", err)
 					continue
 				}
 
 				// Convert to database transaction
 				dbTx := &types.Transaction{
-					ChainID:         "31337", // Hardhat default chain ID
-					TransactionHash: tx.TransactionHash,
-					BlockNumber:     tx.BlockNumber,
-					BlockTimestamp:  time.Unix(tx.Timestamp, 0),
-					FromAddress:     tx.From,
-					ToAddress:       tx.To,
+					ChainID:         chainEvent.Transaction.ChainID,
+					TransactionHash: chainEvent.Transaction.TransactionHash,
+					BlockNumber:     chainEvent.Transaction.BlockNumber,
+					BlockTimestamp:  time.Unix(chainEvent.Transaction.Timestamp, 0),
+					FromAddress:     chainEvent.Transaction.FromAddress,
+					ToAddress:       chainEvent.Transaction.ToAddress,
 					Status:          1, // Assuming success for now
-					GasUsed:         tx.GasUsed,
-					InputData:       tx.InputData,
+					GasUsed:         chainEvent.Transaction.GasUsed,
+					InputData:       chainEvent.Transaction.InputData,
+				}
+
+				// Convert events
+				events := make([]types.Event, len(chainEvent.Events))
+				for i, e := range chainEvent.Events {
+					events[i] = types.Event{
+						ChainID:         chainEvent.Transaction.ChainID,
+						EventName:       e.EventName,
+						ContractAddress: e.ContractAddress,
+						LogIndex:        e.LogIndex,
+						EventData:       e.EventData,
+						BlockNumber:     e.BlockNumber,
+						DecodedArgs:     e.DecodedArgs,
+					}
 				}
 
 				// Process transaction and events
-				if err := processor.ProcessTransaction(ctx, dbTx, tx.Events); err != nil {
+				if err := processor.ProcessTransaction(ctx, dbTx, events); err != nil {
 					log.Printf("Error processing transaction: %v", err)
 					continue
 				}
 
-				log.Printf("Processed transaction: %s", tx.TransactionHash)
+				log.Printf("Processed transaction: %s", chainEvent.Transaction.TransactionHash)
 			}
 		}
 	}()
 
 	// Wait for shutdown signal
 	<-sigChan
-	log.Println("Shutting down gracefully...")
 
 	// Close Kafka reader
 	if err := reader.Close(); err != nil {

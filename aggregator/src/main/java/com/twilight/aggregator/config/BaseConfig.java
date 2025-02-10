@@ -2,15 +2,13 @@ package com.twilight.aggregator.config;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Serializable;
 import java.util.Properties;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public abstract class BaseConfig implements Serializable {
-    private static final long serialVersionUID = 1L;
-    private static final Logger LOG = LoggerFactory.getLogger(BaseConfig.class);
+public abstract class BaseConfig {
+    private static Logger LOG = LoggerFactory.getLogger(BaseConfig.class);
     protected final Properties properties;
 
     protected BaseConfig() {
@@ -19,6 +17,7 @@ public abstract class BaseConfig implements Serializable {
     }
 
     protected void loadConfig() {
+
         // 首先尝试从系统属性获取环境
         String env = System.getProperty("env");
         if (env == null) {
@@ -31,10 +30,10 @@ public abstract class BaseConfig implements Serializable {
             }
         }
         env = env.toLowerCase();
-        
+
         String configFile = String.format("application-%s.properties", env);
         LOG.info("Loading configuration from: {}", configFile);
-        
+
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(configFile)) {
             if (input == null) {
                 LOG.error("Unable to find {}", configFile);
@@ -79,4 +78,4 @@ public abstract class BaseConfig implements Serializable {
     protected boolean getBooleanProperty(String key, String defaultValue) {
         return Boolean.parseBoolean(getProperty(key, defaultValue));
     }
-} 
+}

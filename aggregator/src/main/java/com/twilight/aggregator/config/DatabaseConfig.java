@@ -7,28 +7,25 @@ import org.slf4j.LoggerFactory;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+
 public class DatabaseConfig extends BaseConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(DatabaseConfig.class);
-    private static volatile DatabaseConfig instance;
-    private volatile HikariDataSource hikariDataSource;
+    private static transient DatabaseConfig instance;
+    private transient HikariDataSource hikariDataSource;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private static final long RETRY_DELAY_MS = 1000;
 
     private DatabaseConfig() {
         super();
-        initializeConfig();
     }
 
-    public static synchronized DatabaseConfig getInstance() {
-        if (instance == null) {
-            instance = new DatabaseConfig();
-        }
-        return instance;
+    private static class SingletonHelper {
+        private static final DatabaseConfig INSTANCE = new DatabaseConfig();
     }
 
-    private void initializeConfig() {
-        // JDBC配置已经在父类中加载
+    public static DatabaseConfig getInstance() {
+        return SingletonHelper.INSTANCE;
     }
 
     // JDBC基本配置
@@ -38,7 +35,7 @@ public class DatabaseConfig extends BaseConfig {
             throw new IllegalArgumentException("JDBC URL 配置为空，请检查 application-dev.properties");
         }
         return url;
-        
+
     }
 
     public String getJdbcUsername() {
@@ -98,39 +95,40 @@ public class DatabaseConfig extends BaseConfig {
                     config.setUsername(getJdbcUsername());
                     config.setPassword(getJdbcPassword());
                     config.setDriverClassName(getJdbcDriverClassName());
-                    
+
                     // 减小连接池大小，避免过多连接
-                    config.setMaximumPoolSize( getJdbcMaxPoolSize());
-                    config.setMinimumIdle( getJdbcMinPoolSize());
+                    config.setMaximumPoolSize(getJdbcMaxPoolSize());
+                    config.setMinimumIdle(getJdbcMinPoolSize());
                     config.setConnectionTimeout(getJdbcConnectionTimeout());
                     config.setIdleTimeout(getJdbcIdleTimeout());
                     config.setMaxLifetime(getJdbcMaxLifetime());
-                    
+
                     // 添加连接池监控和诊断
                     config.setPoolName("HikariPool-Aggregator");
                     config.setLeakDetectionThreshold(60000); // 60 seconds
-                    
+
                     // 性能优化配置
                     config.addDataSourceProperty("cachePrepStmts", "true");
                     config.addDataSourceProperty("prepStmtCacheSize", "250");
                     config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
                     config.addDataSourceProperty("useServerPrepStmts", "true");
-                    
+
                     // 添加重试和自动重连配置
                     config.setAutoCommit(true);
                     config.setInitializationFailTimeout(-1); // 禁用初始化超时
                     config.setKeepaliveTime(30000); // 30 seconds
-                    
+
                     hikariDataSource = new HikariDataSource(config);
                     LOG.info("Successfully initialized database connection pool");
                     break;
                 } catch (Exception e) {
                     attempts++;
                     if (attempts >= MAX_RETRY_ATTEMPTS) {
-                        LOG.error("Failed to initialize database connection pool after {} attempts", MAX_RETRY_ATTEMPTS, e);
+                        LOG.error("Failed to initialize database connection pool after {} attempts", MAX_RETRY_ATTEMPTS,
+                                e);
                         throw new RuntimeException("Failed to initialize database connection pool", e);
                     }
-                    LOG.warn("Failed to initialize database connection pool, attempt {}/{}, retrying in {} ms", 
+                    LOG.warn("Failed to initialize database connection pool, attempt {}/{}, retrying in {} ms",
                             attempts, MAX_RETRY_ATTEMPTS, RETRY_DELAY_MS, e);
                     try {
                         Thread.sleep(RETRY_DELAY_MS);

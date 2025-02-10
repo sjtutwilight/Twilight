@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/twilight/common/pkg/types"
+	"github.com/sjtutwilight/Twilight/common/pkg/types"
 
 	"github.com/jmoiron/sqlx"
 )

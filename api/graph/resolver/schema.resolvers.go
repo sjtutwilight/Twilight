@@ -13,8 +13,8 @@ import (
 	"time"
 
 	pgx "github.com/jackc/pgx/v5"
-	"github.com/twilight/api/graph/generated"
-	"github.com/twilight/api/graph/model"
+	"github.com/sjtutwilight/Twilight/api/graph/generated"
+	"github.com/sjtutwilight/Twilight/api/graph/model"
 )
 
 // Transaction is the resolver for the transaction field.

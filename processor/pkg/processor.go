@@ -3,9 +3,10 @@ package db
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/twilight/common/pkg/types"
+	"github.com/sjtutwilight/Twilight/common/pkg/types"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -30,6 +31,9 @@ type Processor struct {
 	// Prepared statements
 	insertTxStmt    *sqlx.NamedStmt
 	insertEventStmt *sqlx.NamedStmt
+	// Processors
+	accountProcessor *AccountProcessor
+	pairProcessor    *PairProcessor
 }
 
 // NewProcessor creates a new database processor with prepared statements
@@ -44,10 +48,22 @@ func NewProcessor(connStr string) (*Processor, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	p := &Processor{db: db}
+	p := &Processor{
+		db:               db,
+		accountProcessor: NewAccountProcessor(db),
+		pairProcessor:    NewPairProcessor(db),
+	}
+
 	if err := p.prepareStatements(); err != nil {
 		db.Close()
 		return nil, err
+	}
+
+	// Initialize processors
+	ctx := context.Background()
+	if err := p.accountProcessor.Initialize(ctx); err != nil {
+		db.Close()
+		return nil, &ProcessorError{Op: "initialize_account_processor", Err: err}
 	}
 
 	return p, nil
@@ -112,19 +128,28 @@ func (p *Processor) ProcessTransaction(ctx context.Context, tx *types.Transactio
 	}
 
 	// Process events
-	pairProcessor := NewPairProcessor(p.db)
 	for _, event := range events {
 		event.TransactionID = txID
 		event.CreateTime = time.Now()
 
+		accountId := p.accountProcessor.accountMap[strings.ToLower(tx.FromAddress)]
 		// Insert event record
 		if err := p.insertEventRecord(ctx, dbTx, &event); err != nil {
 			return &ProcessorError{Op: "insert_event", Err: err}
 		}
 
-		// Process pair-related events
-		if err := pairProcessor.ProcessPairEvent(ctx, dbTx, &event); err != nil {
-			return &ProcessorError{Op: "process_pair_event", Err: err}
+		// // Process pair-related events
+		// if err := p.pairProcessor.ProcessPairEvent(ctx, dbTx, &event); err != nil {
+		// 	return &ProcessorError{Op: "process_pair_event", Err: err}
+		// }
+
+		// Process account-related events using decodedArgs directly
+		if err := p.accountProcessor.ProcessEvent(ctx, dbTx, map[string]interface{}{
+			"eventName":       event.EventName,
+			"contractAddress": event.ContractAddress,
+			"decodedArgs":     event.DecodedArgs,
+		}, accountId); err != nil {
+			return &ProcessorError{Op: "process_account_event", Err: err}
 		}
 	}
 

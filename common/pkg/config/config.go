@@ -5,25 +5,18 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v2"
 )
 
+// Config represents the application configuration
 type Config struct {
-	Kafka    KafkaConfig    `yaml:"kafka"`
 	Postgres PostgresConfig `yaml:"postgres"`
+	Kafka    KafkaConfig    `yaml:"kafka"`
 	Chain    ChainConfig    `yaml:"chain"`
 	Services ServicesConfig `yaml:"services"`
 }
 
-type KafkaConfig struct {
-	Brokers []string     `yaml:"brokers"`
-	Topics  TopicsConfig `yaml:"topics"`
-}
-
-type TopicsConfig struct {
-	ChainTransactions string `yaml:"chain_transactions_new"`
-}
-
+// PostgresConfig represents PostgreSQL configuration
 type PostgresConfig struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -31,6 +24,17 @@ type PostgresConfig struct {
 	Password string `yaml:"password"`
 	Database string `yaml:"database"`
 	SSLMode  string `yaml:"sslmode"`
+}
+
+// KafkaConfig represents Kafka configuration
+type KafkaConfig struct {
+	Brokers []string    `yaml:"brokers"`
+	Topics  TopicConfig `yaml:"topics"`
+}
+
+// TopicConfig represents Kafka topic configuration
+type TopicConfig struct {
+	ChainTransactions string `yaml:"chain_transactions"`
 }
 
 type ChainConfig struct {
@@ -69,9 +73,9 @@ type PairConfig struct {
 	Address string `json:"address"`
 }
 
-// LoadConfig loads configuration from the specified YAML file
-func LoadConfig(filename string) (*Config, error) {
-	data, err := os.ReadFile(filename)
+// LoadConfig loads configuration from a YAML file
+func LoadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config file: %w", err)
 	}

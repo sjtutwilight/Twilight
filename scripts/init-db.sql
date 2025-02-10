@@ -1,5 +1,24 @@
-
-
+CREATE TABLE  if not exists account (
+  id          BIGSERIAL PRIMARY KEY,
+  chain_id    VARCHAR(64) NOT NULL,
+  address     VARCHAR(128) NOT NULL ,
+  balance     DECIMAL(30,10) DEFAULT 0, --ETH
+  public_key  VARCHAR(256),
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(chain_id,address)
+);
+CREATE TABLE  if not exists account_asset (
+  id         BIGSERIAL PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+  asset_type VARCHAR(32) NOT NULL,  -- 'token_holding' 或 'lp'
+  bizId      VARCHAR(128) NOT NULL, -- if token_holding ,为token_id else if lp 为pair_id
+  balance    DECIMAL(30,10) DEFAULT 0, --token balance
+  extension_info       JSONB,                 -- 扩展信息,目前存lp注入的平均价格“average_price”
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(account_id, asset_type, bizId)
+);
 CREATE TABLE if not exists transaction (
   id                BIGSERIAL       PRIMARY KEY,
   chain_id          VARCHAR(64),
@@ -37,8 +56,8 @@ CREATE TABLE if not exists token (
   token_name        VARCHAR(128),
   token_decimals    INT,
   hype_score        INT,                 -- 随机或自定义算法
-  supply_usd        DECIMAL(38,18),      -- FDV
-  liquidity_usd     DECIMAL(38,18),      -- 总流动性估算
+  supply_usd        DECIMAL(24,4),      -- FDV
+  liquidity_usd     DECIMAL(24,4),      -- 总流动性估算
   create_time       TIMESTAMP,
   update_time       TIMESTAMP,
   UNIQUE (chain_id, token_address)
@@ -50,8 +69,8 @@ CREATE TABLE if not exists twswap_factory (
   time_window          VARCHAR(16),  -- 如 '30s', '5min', '1h', 'total'
   end_time             TIMESTAMP,    -- 窗口结束时间
   pair_count           INT,
-  volume_usd           DECIMAL(38,18),
-  liquidity_usd        DECIMAL(38,18),
+  volume_usd           DECIMAL(24,4),
+  liquidity_usd        DECIMAL(24,4),
   txcnt                INT,
   -- 若需记录最后更新时刻
   update_time          TIMESTAMP,
@@ -63,14 +82,14 @@ CREATE TABLE if not exists token_metric (
   token_id            BIGINT NOT NULL REFERENCES token(id) ON DELETE CASCADE,
   time_window         VARCHAR(16),   -- '20s','1min','5min','30min','1h'
   end_time            TIMESTAMP,
-  volume_usd          DECIMAL(38,18),  -- 指定窗口内交易量
+  volume_usd          DECIMAL(24,4),  -- 指定窗口内交易量
   txcnt               INT,             -- 交易笔数
-  token_price_usd     DECIMAL(38,18),  -- token价格
-  buy_pressure_usd    DECIMAL(38,18),  -- (buy_volume - sell_volume)
+  token_price_usd     DECIMAL(24,4),  -- token价格
+  buy_pressure_usd    DECIMAL(24,4),  -- (buy_volume - sell_volume)
   buyers_count        INT,
   sellers_count       INT,
-  buy_volume_usd      DECIMAL(38,18),
-  sell_volume_usd     DECIMAL(38,18),
+  buy_volume_usd      DECIMAL(24,4),
+  sell_volume_usd     DECIMAL(24,4),
   update_time         TIMESTAMP,
   UNIQUE (token_id, time_window, end_time)
 );
@@ -80,10 +99,10 @@ CREATE TABLE if not exists twswap_token_metric (
   time_window     VARCHAR(16),  -- '30s','5min','30min','1h','total'
   end_time        TIMESTAMP,    -- 窗口结束时间
 
-  volume_usd      DECIMAL(38,18),
+  volume_usd      DECIMAL(24,4),
   txcnt           INT,
-  liquidity_usd   DECIMAL(38,18),
-  token_price_usd DECIMAL(38,18),
+  liquidity_usd   DECIMAL(24,4),
+  token_price_usd DECIMAL(24,4),
 
   update_time     TIMESTAMP,
 
@@ -107,12 +126,12 @@ CREATE TABLE if not exists twswap_pair_metric (
   time_window         VARCHAR(16),  -- '20s','1min','5min','30min'
   end_time            TIMESTAMP,    -- 窗口截止时间
 
-  token0_reserve      DECIMAL(38,18),
-  token1_reserve      DECIMAL(38,18),
-  reserve_usd         DECIMAL(38,18),
-  token0_volume_usd   DECIMAL(38,18),
-  token1_volume_usd   DECIMAL(38,18),
-  volume_usd          DECIMAL(38,18),
+  token0_reserve      DECIMAL(24,4),
+  token1_reserve      DECIMAL(24,4),
+  reserve_usd         DECIMAL(24,4),
+  token0_volume_usd   DECIMAL(24,4),
+  token1_volume_usd   DECIMAL(24,4),
+  volume_usd          DECIMAL(24,4),
   txcnt               INT,
 
   UNIQUE (pair_id, time_window, end_time)

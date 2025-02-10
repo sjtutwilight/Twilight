@@ -8,16 +8,17 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/sjtutwilight/Twilight/common/pkg/config"
+	"github.com/sjtutwilight/Twilight/common/pkg/kafka"
+	chain "github.com/sjtutwilight/Twilight/listener/pkg"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/twilight/common/pkg/config"
-	"github.com/twilight/common/pkg/kafka"
-	chain "github.com/twilight/listener/pkg"
 )
 
 var (
-	configFile     = flag.String("config", "../../common/pkg/config/config.yaml", "Path to configuration file")
-	deploymentFile = flag.String("deployment", "../../deployment.json", "Path to deployment configuration file")
+	configFile     = flag.String("config", "../common/pkg/config/config.yaml", "Path to configuration file")
+	deploymentFile = flag.String("deployment", "../deployment.json", "Path to deployment configuration file")
 )
 
 func main() {

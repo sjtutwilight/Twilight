@@ -16,10 +16,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.twilight.aggregator.config.DatabaseConfig;
-import com.twilight.aggregator.model.PairMetadata;   
+import com.twilight.aggregator.model.PairMetadata;
 
 public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
-    private static final Logger LOG = LoggerFactory.getLogger(PairMetadataSource.class);
+    private static transient Logger LOG;
     private static final long serialVersionUID = 1L;
 
     private final long refreshInterval;
@@ -34,11 +34,12 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
     @Override
     public void open(Configuration parameters) {
         dataSource = DatabaseConfig.getInstance().getHikariDataSource();
+        LOG = LoggerFactory.getLogger(PairMetadataSource.class);
+        scheduler = Executors.newSingleThreadScheduledExecutor();
     }
 
     @Override
     public void run(SourceContext<PairMetadata> ctx) throws Exception {
-        scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(() -> {
             if (!isRunning) {
                 return;
@@ -52,7 +53,7 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
                 }
             }
         }, 0, refreshInterval, TimeUnit.MILLISECONDS);
-    
+
         // Wait until the source is canceled
         while (isRunning) {
             try {
@@ -63,7 +64,7 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
                 break;
             }
         }
-    
+
         // Shutdown the scheduler gracefully
         shutdownScheduler();
     }
@@ -84,21 +85,21 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
 
     private void queryAndEmit(SourceContext<PairMetadata> ctx) throws SQLException {
         String sql = "SELECT " +
-                    "p.id as pair_id, " +
-                    "p.pair_address, " +
-                    "p.token0_id, " +
-                    "p.token1_id, " +
-                    "t0.token_address as token0_address, " +
-                    "t1.token_address as token1_address " +
-                    "FROM twswap_pair p " +
-                    "JOIN token t0 ON p.token0_id = t0.id " +
-                    "JOIN token t1 ON p.token1_id = t1.id " +
-                    "WHERE p.chain_id = '31337'"; // 假设 chain_id 为 1，可以从配置中获取
+                "p.id as pair_id, " +
+                "p.pair_address, " +
+                "p.token0_id, " +
+                "p.token1_id, " +
+                "t0.token_address as token0_address, " +
+                "t1.token_address as token1_address " +
+                "FROM twswap_pair p " +
+                "JOIN token t0 ON p.token0_id = t0.id " +
+                "JOIN token t1 ON p.token1_id = t1.id " +
+                "WHERE p.chain_id = '31337'"; // 假设 chain_id 为 1，可以从配置中获取
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-            
+                PreparedStatement stmt = conn.prepareStatement(sql);
+                ResultSet rs = stmt.executeQuery()) {
+
             while (rs.next()) {
                 PairMetadata metadata = new PairMetadata();
                 metadata.setPairId(rs.getLong("pair_id"));
@@ -107,7 +108,7 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
                 metadata.setToken1Id(rs.getLong("token1_id"));
                 metadata.setToken0Address(rs.getString("token0_address"));
                 metadata.setToken1Address(rs.getString("token1_address"));
-                
+
                 synchronized (ctx.getCheckpointLock()) {
                     ctx.collect(metadata);
                 }
@@ -124,4 +125,4 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
         isRunning = false;
         shutdownScheduler();
     }
-} 
+}

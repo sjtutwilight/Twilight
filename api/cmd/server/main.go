@@ -7,10 +7,11 @@ import (
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
-	"github.com/twilight/api/graph"
-	"github.com/twilight/api/graph/generated"
-	"github.com/twilight/api/internal/config"
-	"github.com/twilight/api/internal/middleware"
+
+	"github.com/sjtutwilight/Twilight/api/graph/generated"
+	"github.com/sjtutwilight/Twilight/api/graph/resolver"
+	"github.com/sjtutwilight/Twilight/api/internal/config"
+	"github.com/sjtutwilight/Twilight/api/internal/middleware"
 )
 
 func main() {
@@ -27,8 +28,8 @@ func main() {
 	}
 
 	// Create new schema and resolver
-	resolver := &graph.Resolver{DB: db}
-	srv := handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{Resolvers: resolver}))
+	r := resolver.NewResolver(db)
+	srv := handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 
 	// Create a new router
 	mux := http.NewServeMux()

@@ -1,0 +1,71 @@
+{
+    "name": "Example Strategy",
+    "description": "A simple example strategy that demonstrates event trigger, condition check, delay and action execution",
+    "startNode": {
+        "id": "trigger1",
+        "type": "eventTrigger",
+        "config": {
+            "eventType": "metric_update"
+        },
+        "next": ["condition1"]
+    },
+    "nodes": [
+        {
+            "id": "condition1",
+            "type": "condition",
+            "config": {
+                "type": "composite",
+                "operator": "AND",
+                "conditions": [
+                    {
+                        "type": "threshold",
+                        "params": {
+                            "field": "data.value",
+                            "operator": "gt",
+                            "threshold": 100
+                        }
+                    },
+                    {
+                        "type": "frequency",
+                        "params": {
+                            "count": 3,
+                            "window": "5m"
+                        }
+                    }
+                ]
+            },
+            "next": ["delay1", "action2"]
+        },
+        {
+            "id": "delay1",
+            "type": "delay",
+            "config": {
+                "duration": "1m"
+            },
+            "next": ["action1"]
+        },
+        {
+            "id": "action1",
+            "type": "notification",
+            "config": {
+                "type": "email",
+                "template": "alert_template",
+                "params": {
+                    "subject": "Delayed Alert",
+                    "priority": "high"
+                }
+            },
+            "next": []
+        },
+        {
+            "id": "action2",
+            "type": "notification",
+            "config": {
+                "type": "webhook",
+                "url": "http://example.com/callback",
+                "method": "POST"
+            },
+            "next": []
+        }
+    ]
+} 

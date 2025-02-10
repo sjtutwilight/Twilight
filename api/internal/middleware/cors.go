@@ -18,21 +18,16 @@ func CorsMiddleware() func(http.Handler) http.Handler {
 
 			// Get origin from request
 			origin := r.Header.Get("Origin")
+			if origin == "" {
+				// Not a CORS request
+				next.ServeHTTP(w, r)
+				return
+			}
 
-			// If specific origins are set, check if the request origin is allowed
-			if allowedOrigins != "*" {
-				allowed := false
-				for _, allowedOrigin := range strings.Split(allowedOrigins, ",") {
-					if origin == strings.TrimSpace(allowedOrigin) {
-						allowed = true
-						break
-					}
-				}
-				if allowed {
-					w.Header().Set("Access-Control-Allow-Origin", origin)
-				}
-			} else {
-				w.Header().Set("Access-Control-Allow-Origin", "*")
+			// Get allow credentials from environment
+			allowCredentials := os.Getenv("CORS_ALLOW_CREDENTIALS")
+			if allowCredentials == "" {
+				allowCredentials = "true"
 			}
 
 			// Get allowed methods from environment
@@ -40,25 +35,63 @@ func CorsMiddleware() func(http.Handler) http.Handler {
 			if allowedMethods == "" {
 				allowedMethods = "GET,POST,OPTIONS"
 			}
-			w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 
 			// Get allowed headers from environment
 			allowedHeaders := os.Getenv("CORS_ALLOWED_HEADERS")
 			if allowedHeaders == "" {
 				allowedHeaders = "Accept,Content-Type,Content-Length,Accept-Encoding,Authorization,X-CSRF-Token"
 			}
+
+			// Set basic CORS headers
+			w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 			w.Header().Set("Access-Control-Allow-Headers", allowedHeaders)
 
-			// Get allow credentials from environment
-			allowCredentials := os.Getenv("CORS_ALLOW_CREDENTIALS")
-			if allowCredentials == "" {
-				allowCredentials = "true"
+			// Set max age for preflight cache
+			w.Header().Set("Access-Control-Max-Age", "3600")
+
+			// Allow credentials if enabled
+			if allowCredentials == "true" {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+				// When credentials are enabled, must use specific origin
+				allowed := false
+				for _, allowedOrigin := range strings.Split(allowedOrigins, ",") {
+					if origin == strings.TrimSpace(allowedOrigin) {
+						allowed = true
+						w.Header().Set("Access-Control-Allow-Origin", origin)
+						// Also set Vary header when using specific origin
+						w.Header().Set("Vary", "Origin")
+						break
+					}
+				}
+				if !allowed {
+					http.Error(w, "Origin not allowed", http.StatusForbidden)
+					return
+				}
+			} else if allowedOrigins == "*" {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else {
+				// Check if origin is in allowed list
+				allowed := false
+				for _, allowedOrigin := range strings.Split(allowedOrigins, ",") {
+					if origin == strings.TrimSpace(allowedOrigin) {
+						allowed = true
+						w.Header().Set("Access-Control-Allow-Origin", origin)
+						w.Header().Set("Vary", "Origin")
+						break
+					}
+				}
+				if !allowed {
+					http.Error(w, "Origin not allowed", http.StatusForbidden)
+					return
+				}
 			}
-			w.Header().Set("Access-Control-Allow-Credentials", allowCredentials)
 
 			// Handle preflight requests
 			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
+				// Add extra headers for preflight
+				w.Header().Set("Access-Control-Allow-Private-Network", "true")
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 

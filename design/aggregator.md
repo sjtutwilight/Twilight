@@ -1,12 +1,14 @@
 
+
+
 # 链聚合器
-使用flink进行指标计算，java作为开发语言。从chain_transaction中解析出event列表，遍历列表进行处理sink到数据库。数据库结构在TableStucture.md. 需要对event中的reserve,amount数据除10的18次方进行换算。
+使用flink进行指标计算，java作为开发语言。从chain_transactions_new中解析出event列表，遍历列表进行处理sink到数据库。数据库结构在TableStucture.md. 需要对event中的reserve,amount数据除10的18次方进行换算。
 ## 流程图
 ```mermaid
 flowchart TD
 	job初始化--1查询token_reserve-->twswap_pair_metric
 	job初始化--2写入tokenPriceUsd-->redis
- kafka((topic:chain_transaction))--json反序列化-->stream:Transaction
+ kafka((topic:chain_transactions_new))--json反序列化-->stream:Transaction
  stream:Transaction--flatmap -->stream:Event
  broadcaststate--获取pairmetadata-->twswap_pair
 
@@ -70,6 +72,9 @@ TokenMetric:
   sellVolumeUsd: BigDecimal  # 卖出成交量 (USD)
 
 stream:Transaction--flatmap -->stream:Event时将fromAddress写入Event方便后面处理获取。
+## 层次化窗口处理
+先计算 最小时间粒度（20s） 的窗口结果。
+依次累积到 更大窗口，避免重复计算。
 ## tokenPriceUsd
 以twswap_pair表中各token 与usdc的pair的reserve比值为usd价格,usdc价格为1。reserve从twswap_pair_metric最新的数据获取
 比如weth是token0,usdc是token1,weth的tokenPriceUsd为token1_reserve/token0_reserve，反之同理
@@ -126,5 +131,4 @@ keyBy:tokenAddress
 - buy_count : if buyOrSell==true ,txcnt++
 - sell_count: if buyOrSell==false,txcnt++
 - txcnt++
-
 

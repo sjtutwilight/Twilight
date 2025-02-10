@@ -2,22 +2,46 @@ package types
 
 import "time"
 
-// Pair represents a trading pair
+// Transaction represents a blockchain transaction
+type Transaction struct {
+	ID              int64     `db:"id"`
+	ChainID         string    `db:"chain_id"`
+	TransactionHash string    `db:"transaction_hash"`
+	BlockNumber     int64     `db:"block_number"`
+	BlockTimestamp  time.Time `db:"block_timestamp"`
+	FromAddress     string    `db:"from_address"`
+	ToAddress       string    `db:"to_address"`
+	MethodName      string    `db:"method_name"`
+	Status          int       `db:"transaction_status"`
+	GasUsed         int64     `db:"gas_used"`
+	InputData       string    `db:"input_data"`
+	CreateTime      time.Time `db:"create_time"`
+}
+
+// Event represents a blockchain event
+type Event struct {
+	ID              int64                  `db:"id"`
+	TransactionID   int64                  `db:"transaction_id"`
+	ChainID         string                 `db:"chain_id"`
+	EventName       string                 `db:"event_name"`
+	ContractAddress string                 `db:"contract_address"`
+	LogIndex        int                    `db:"log_index"`
+	EventData       string                 `db:"event_data"`
+	CreateTime      time.Time              `db:"create_time"`
+	BlockNumber     int64                  `db:"block_number"`
+	DecodedArgs     map[string]interface{} `db:"-"`
+}
+
+// Pair represents a TWSwap pair
 type Pair struct {
 	ID                   int64     `db:"id"`
 	ChainID              string    `db:"chain_id"`
 	PairAddress          string    `db:"pair_address"`
 	Token0ID             int64     `db:"token0_id"`
 	Token1ID             int64     `db:"token1_id"`
-	Token0IsUSDC         bool      `db:"token0_is_usdc"`
-	Reserve0             float64   `db:"reserve0"`
-	Reserve1             float64   `db:"reserve1"`
-	TotalSupply          float64   `db:"total_supply"`
-	VolumeToken0         float64   `db:"volume_token0"`
-	VolumeToken1         float64   `db:"volume_token1"`
+	FeeTier              string    `db:"fee_tier"`
 	CreatedAtTimestamp   time.Time `db:"created_at_timestamp"`
 	CreatedAtBlockNumber int64     `db:"created_at_block_number"`
-	UpdateTime           time.Time `db:"update_time"`
 }
 
 // Token represents a token
@@ -35,45 +59,34 @@ type Token struct {
 
 // TokenMetric represents token metrics
 type TokenMetric struct {
-	ID               int64     `db:"id"`
-	TokenID          int64     `db:"token_id"`
-	MetricType       string    `db:"metric_type"`
-	StartTime        time.Time `db:"start_time"`
-	TotalSupply      float64   `db:"total_supply"`
-	TradeVolumeUSD   float64   `db:"trade_volume_usd"`
-	TransactionCount int       `db:"transaction_count"`
-	TotalLiquidity   float64   `db:"total_liquidity"`
-	PriceUSD         float64   `db:"price_usd"`
-	UpdateTime       time.Time `db:"update_time"`
+	ID             int64     `db:"id"`
+	TokenID        int64     `db:"token_id"`
+	TimeWindow     string    `db:"time_window"`
+	EndTime        time.Time `db:"end_time"`
+	VolumeUSD      float64   `db:"volume_usd"`
+	TxCount        int       `db:"txcnt"`
+	TokenPriceUSD  float64   `db:"token_price_usd"`
+	BuyPressureUSD float64   `db:"buy_pressure_usd"`
+	BuyersCount    int       `db:"buyers_count"`
+	SellersCount   int       `db:"sellers_count"`
+	BuyVolumeUSD   float64   `db:"buy_volume_usd"`
+	SellVolumeUSD  float64   `db:"sell_volume_usd"`
+	MakersCount    int       `db:"makers_count"`
+	BuyCount       int       `db:"buy_count"`
+	SellCount      int       `db:"sell_count"`
+	UpdateTime     time.Time `db:"update_time"`
 }
 
-// PairMetric represents pair metrics
-type PairMetric struct {
-	ID               int64     `db:"id"`
-	PairID           int64     `db:"pair_id"`
-	MetricType       string    `db:"metric_type"`
-	StartTime        time.Time `db:"start_time"`
-	Token0Address    string    `db:"token0_address"`
-	Token1Address    string    `db:"token1_address"`
-	Reserve0         float64   `db:"reserve0"`
-	Reserve1         float64   `db:"reserve1"`
-	TotalSupply      float64   `db:"total_supply"`
-	ReserveUSD       float64   `db:"reserve_usd"`
-	Token0Volume     float64   `db:"token0_volume"`
-	Token1Volume     float64   `db:"token1_volume"`
-	VolumeUSD        float64   `db:"volume_usd"`
-	TransactionCount int       `db:"transaction_count"`
-	UpdateTime       time.Time `db:"update_time"`
-}
-
-// TWSwapFactory represents the factory contract
+// TWSwapFactory represents a TWSwap factory contract
 type TWSwapFactory struct {
-	ID                int64     `db:"id"`
-	ChainID           string    `db:"chain_id"`
-	FactoryAddress    string    `db:"factory_address"`
-	PairCount         int       `db:"pair_count"`
-	TotalVolumeUSD    float64   `db:"total_volume_usd"`
-	TotalLiquidityUSD float64   `db:"total_liquidity_usd"`
-	TransactionCount  int       `db:"transaction_count"`
-	UpdateTime        time.Time `db:"update_time"`
+	ID             int64     `db:"id"`
+	ChainID        string    `db:"chain_id"`
+	FactoryAddress string    `db:"factory_address"`
+	TimeWindow     string    `db:"time_window"`
+	EndTime        time.Time `db:"end_time"`
+	PairCount      int       `db:"pair_count"`
+	VolumeUSD      float64   `db:"volume_usd"`
+	LiquidityUSD   float64   `db:"liquidity_usd"`
+	TxCount        int       `db:"txcnt"`
+	UpdateTime     time.Time `db:"update_time"`
 }

@@ -1,16 +1,17 @@
-module github.com/twilight/processor
+module github.com/sjtutwilight/Twilight/processor
 
-go 1.22
+go 1.22.5
 
 require (
 	github.com/ethereum/go-ethereum v1.13.5
-	github.com/jmoiron/sqlx v1.3.5
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/segmentio/kafka-go v0.4.47
-	github.com/shopspring/decimal v1.3.1
+	github.com/sjtutwilight/Twilight/common v0.0.0
 	github.com/stretchr/testify v1.8.4
-	github.com/twilight/common v0.0.0
 )
+
+replace github.com/sjtutwilight/Twilight/common => ../common
 
 require (
 	github.com/bits-and-blooms/bitset v1.7.0 // indirect
@@ -31,8 +32,7 @@ require (
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
-
-replace github.com/twilight/common => ../common

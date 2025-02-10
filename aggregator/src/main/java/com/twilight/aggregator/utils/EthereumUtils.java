@@ -1,26 +1,20 @@
 package com.twilight.aggregator.utils;
 
-import java.math.BigDecimal;
-import java.math.BigInteger;
-
 public class EthereumUtils {
-    private static final BigDecimal WEI_TO_ETH = new BigDecimal("1000000000000000000"); // 10^18
+    private static final double WEI_TO_ETH = 1e18; // 10^18
 
-    public static BigDecimal convertWeiToEth(String weiAmount) {
-        if (weiAmount == null || weiAmount.isEmpty()) {
-            return BigDecimal.ZERO;
+    public static double convertWeiToEth(String weiAmount) {
+        if (weiAmount == null) {
+            return 0.0;
         }
         try {
-            return new BigDecimal(weiAmount).divide(WEI_TO_ETH, 18, BigDecimal.ROUND_HALF_UP);
+            return Double.parseDouble(weiAmount) / WEI_TO_ETH;
         } catch (NumberFormatException e) {
-            return BigDecimal.ZERO;
+            return 0.0;
         }
     }
 
-    public static BigDecimal convertWeiToEth(BigInteger weiAmount) {
-        if (weiAmount == null) {
-            return BigDecimal.ZERO;
-        }
-        return new BigDecimal(weiAmount).divide(WEI_TO_ETH, 18, BigDecimal.ROUND_HALF_UP);
+    public static double convertWeiToEth(long weiAmount) {
+        return weiAmount / WEI_TO_ETH;
     }
-} 
+}
