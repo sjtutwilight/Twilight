@@ -1,246 +1,201 @@
 package com.twilight.aggregator;
 
-import java.util.Properties;
 import java.time.Duration;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.state.MapStateDescriptor;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.java.typeutils.MapTypeInfo;
-import org.apache.flink.configuration.Configuration;
+
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.connector.kafka.source.KafkaSource;
-import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
-import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.streaming.api.windowing.triggers.ProcessingTimeTrigger;
+import org.apache.flink.util.OutputTag;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 
 import com.twilight.aggregator.config.FlinkConfig;
-import com.twilight.aggregator.model.Event;
+import com.twilight.aggregator.model.ProcessEvent;
 import com.twilight.aggregator.model.KafkaMessage;
 import com.twilight.aggregator.model.Pair;
 import com.twilight.aggregator.model.PairMetadata;
 import com.twilight.aggregator.model.PairMetric;
 import com.twilight.aggregator.model.Token;
-import com.twilight.aggregator.model.TokenMetric;
+import com.twilight.aggregator.model.TokenRecentMetric;
 import com.twilight.aggregator.process.EventExtractor;
-import com.twilight.aggregator.process.PairHierarchicalWindowAggregator;
-import com.twilight.aggregator.process.PairMetadataProcessor;
-import com.twilight.aggregator.process.PairWindowProcessor;
-import com.twilight.aggregator.process.TokenHierarchicalWindowAggregator;
-import com.twilight.aggregator.process.TokenMetadataProcessor;
-import com.twilight.aggregator.process.TokenWindowProcessor;
+
 import com.twilight.aggregator.serialization.KafkaMessageDeserializer;
 import com.twilight.aggregator.sink.PostgresSink;
 import com.twilight.aggregator.source.PairMetadataSource;
+import com.twilight.aggregator.process.pair.PairWindowManager;
+import com.twilight.aggregator.process.token.TokenWindowManager;
+import com.twilight.aggregator.model.TokenRollingMetric;
+import com.twilight.aggregator.process.EventEnrichmentProcessor;
+import org.apache.flink.streaming.api.datastream.AsyncDataStream;
+import java.util.concurrent.TimeUnit;
+import com.twilight.aggregator.source.AsyncPriceLookupFunction;
+import com.twilight.aggregator.process.EventSplitProcessor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class AggregatorJob {
-    private static final MapStateDescriptor<String, PairMetadata> PAIR_METADATA_DESCRIPTOR = new MapStateDescriptor<>(
-            "PairMetadata", String.class, PairMetadata.class);
+        private static final Logger log = LoggerFactory.getLogger(AggregatorJob.class);
+        private static final MapStateDescriptor<String, PairMetadata> PAIR_METADATA_DESCRIPTOR = new MapStateDescriptor<>(
+                        "PairMetadataDescriptor", String.class, PairMetadata.class);
 
-    private static final FlinkConfig config = FlinkConfig.getInstance();
+        private static final FlinkConfig config = FlinkConfig.getInstance();
 
-    public static void main(String[] args) throws Exception {
-        // 创建流执行环境
-        Configuration configuration = new Configuration();
-        // 配置本地 Web UI，使用不同的端口避免冲突
-        configuration.setString("rest.bind-port", "8083");
-        configuration.setString("rest.address", "localhost");
+        public static void main(String[] args) throws Exception {
+                // Set up the execution environment
+                final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // 资源配置
-        configuration.setString("taskmanager.memory.network.fraction", "0.3");
-        configuration.setInteger("taskmanager.numberOfTaskSlots", 1);
-        configuration.setString("taskmanager.memory.task.heap.size", "2048m");
-        configuration.setString("taskmanager.memory.task.off-heap.size", "512m");
-        configuration.setString("taskmanager.memory.network.min", "512mb");
-        configuration.setString("taskmanager.memory.network.max", "512mb");
-        configuration.setString("jobmanager.memory.process.size", "1024m");
+                // Configure Kafka source
+                KafkaSource<KafkaMessage> source = KafkaSource.<KafkaMessage>builder()
+                                .setBootstrapServers(config.getKafkaBootstrapServers())
+                                .setTopics(config.getKafkaTopic())
+                                .setGroupId(config.getKafkaGroupId())
+                                .setStartingOffsets(OffsetsInitializer.latest())
+                                .setValueOnlyDeserializer(new KafkaMessageDeserializer())
+                                .build();
 
-        // 缓冲区配置
-        configuration.setString("taskmanager.network.memory.buffer-size", "32kb");
-        configuration.setString("taskmanager.network.memory.floating-buffers-per-gate", "1024");
-        configuration.setString("taskmanager.network.memory.buffers-per-channel", "8");
-        configuration.setString("taskmanager.network.detailed-metrics", "false");
-        configuration.setBoolean("taskmanager.network.blocking-shuffle.compression.enabled", false);
+                // Configure watermark strategies
+                WatermarkStrategy<KafkaMessage> kafkaWatermarkStrategy = WatermarkStrategy
+                                .<KafkaMessage>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                                .withTimestampAssigner((event, timestamp) -> {
+                                        long eventTime = event.getTransaction().getTimestamp();
+                                        return eventTime;
+                                })
+                                .withIdleness(Duration.ofSeconds(30));
 
-        // 配置状态后端
-        configuration.setString("state.backend", "hashmap");
-        configuration.setString("state.backend.incremental", "true");
-        configuration.setString("state.checkpoints.num-retained", "2");
+                WatermarkStrategy<Token> tokenWatermarkStrategy = WatermarkStrategy
+                                .<Token>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                                .withTimestampAssigner((token, timestamp) -> {
+                                        long eventTime = token.getTimestamp();
+                                        return eventTime;
+                                })
+                                .withIdleness(Duration.ofSeconds(30));
 
-        // 配置重启策略
-        configuration.setString("restart-strategy", "fixed-delay");
-        configuration.setString("restart-strategy.fixed-delay.attempts", "3");
-        configuration.setString("restart-strategy.fixed-delay.delay", "10s");
+                WatermarkStrategy<Pair> pairWatermarkStrategy = WatermarkStrategy
+                                .<Pair>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                                .withTimestampAssigner((pair, timestamp) -> {
+                                        long eventTime = pair.getTimestamp();
+                                        return eventTime;
+                                })
+                                .withIdleness(Duration.ofSeconds(30));
 
-        final StreamExecutionEnvironment env = StreamExecutionEnvironment
-                .createLocalEnvironmentWithWebUI(configuration);
-        env.setParallelism(1);
-        env.setBufferTimeout(100); // 增加缓冲超时时间
+                // Extract events from transactions
+                DataStream<ProcessEvent> eventStream = env
+                                .fromSource(source, kafkaWatermarkStrategy, "Kafka Source")
+                                .flatMap(new EventExtractor())
+                                .name("Event Extractor");
 
-        // 配置序列化
-        env.getConfig().enableObjectReuse();
+                // Create broadcast state for pair metadata
+                BroadcastStream<PairMetadata> pairMetadataBroadcast = createPairMetadataBroadcast(env);
+                DataStream<ProcessEvent> enrichedEventStream = eventStream
+                                .connect(pairMetadataBroadcast)
+                                .process(new EventEnrichmentProcessor(PAIR_METADATA_DESCRIPTOR))
+                                .name("Event Enrichment");
 
-        // 创建 Kafka source with JSON deserializer
-        KafkaSource<KafkaMessage> source = KafkaSource.<KafkaMessage>builder()
-                .setBootstrapServers(config.getKafkaBootstrapServers())
-                .setTopics(config.getKafkaTopic())
-                .setGroupId(config.getKafkaGroupId())
-                .setStartingOffsets(OffsetsInitializer.latest())
-                .setValueOnlyDeserializer(new KafkaMessageDeserializer())
-                .setProperties(new Properties() {
-                    {
-                        setProperty("fetch.min.bytes", "1");
-                        setProperty("fetch.max.wait.ms", "100");
-                        setProperty("max.poll.records", "500");
-                        setProperty("enable.auto.commit", "false");
-                        setProperty("auto.offset.reset", "latest");
-                        setProperty("isolation.level", "read_committed");
-                    }
-                })
-                .build();
+                // Enrich events with price data using async I/O
+                enrichedEventStream = AsyncDataStream.unorderedWait(
+                                enrichedEventStream,
+                                new AsyncPriceLookupFunction(),
+                                5000, // 增加超时时间到5秒
+                                TimeUnit.MILLISECONDS,
+                                500 // 增加容量到500
+                ).name("Price Lookup");
 
-        // Create main stream with simple watermark strategy
-        WatermarkStrategy<KafkaMessage> watermarkStrategy = WatermarkStrategy
-                .<KafkaMessage>forBoundedOutOfOrderness(Duration.ofSeconds(5))
-                .withTimestampAssigner((message, timestamp) -> message.getTransaction().getTimestamp())
-                .withIdleness(Duration.ofMinutes(1)); // 允许窗口在无数据时保持对齐
+                // Split events into token and pair streams using side outputs
+                EventSplitProcessor splitProcessor = new EventSplitProcessor();
 
-        // Extract events from transactions
-        DataStream<Event> eventStream = env
-                .fromSource(source, watermarkStrategy, "Kafka Source")
-                .flatMap(new EventExtractor())
-                .name("Event Extractor");
+                // 先处理事件分割，获取原始的处理结果流
+                SingleOutputStreamOperator<Pair> processedStream = enrichedEventStream
+                                .process(splitProcessor);
+                log.info("Created processed stream with EventSplitProcessor");
 
-        // Create broadcast state for pair metadata
-        BroadcastStream<PairMetadata> pairMetadataBroadcast = createPairMetadataBroadcast(env);
+                // 从处理结果流获取侧流（token流）
+                OutputTag<Token> tokenOutputTag = splitProcessor.getTokenOutput();
 
-        // Process pairs
-        DataStream<PairMetric> pairMetrics = processWithWindow(
-                eventStream
-                        .connect(pairMetadataBroadcast)
-                        .process(new PairMetadataProcessor(PAIR_METADATA_DESCRIPTOR))
-                        .keyBy(pair -> pair.getPairAddress()),
-                "pair");
+                DataStream<Token> tokenStream = processedStream
+                                .getSideOutput(tokenOutputTag)
+                                .assignTimestampsAndWatermarks(tokenWatermarkStrategy)
+                                .name("Token Stream");
+                log.debug("Created token stream from side output");
 
-        // Process tokens
-        DataStream<TokenMetric> tokenMetrics = processWithWindow(
-                eventStream
-                        .connect(pairMetadataBroadcast)
-                        .process(new TokenMetadataProcessor(PAIR_METADATA_DESCRIPTOR))
-                        .keyBy(Token::getTokenAddress),
-                "token");
+                // 处理主流（pair流）
+                SingleOutputStreamOperator<Pair> pairStream = processedStream
+                                .assignTimestampsAndWatermarks(pairWatermarkStrategy)
+                                .name("Pair Stream");
+                log.debug("Created pair stream from processed stream");
 
-        // Add sinks
-        pairMetrics.addSink(PostgresSink.createPairMetricSink());
-        tokenMetrics.addSink(PostgresSink.createTokenMetricSink());
-        System.out.println("Job started..."); // 确保这行打印出现
+                // Key the streams
+                KeyedStream<Token, String> keyedTokenStream = tokenStream
+                                .keyBy(Token::getTokenAddress);
+                log.debug("Created keyed token stream");
 
-        env.execute("DeFi Metrics Aggregator");
-    }
+                // Process tokens
+                DataStream<TokenRecentMetric> tokenRecentMetrics = TokenWindowManager
+                                .createSlidingHierarchicalWindows(keyedTokenStream);
+                log.debug("Created token recent metrics stream");
 
-    private static BroadcastStream<PairMetadata> createPairMetadataBroadcast(StreamExecutionEnvironment env) {
-        // Create pair metadata source
-        PairMetadataSource source = new PairMetadataSource(config.getPairMetadataRefreshInterval());
-        return env.addSource(source)
-                .setParallelism(1)
-                .broadcast(PAIR_METADATA_DESCRIPTOR);
-    }
+                // DataStream<TokenRollingMetric> tokenRollingMetrics = TokenWindowManager
+                // .createRollingHierarchicalWindows(keyedTokenStream);
+                // log.debug("Created token rolling metrics stream");
 
-    private static <T, M> DataStream<M> processWithWindow(
-            KeyedStream<T, String> stream,
-            String metricType) {
+                // Process pairs
+                DataStream<PairMetric> pairMetrics = PairWindowManager.createHierarchicalWindows(
+                                pairStream.keyBy(Pair::getPairId));
+                log.debug("Created pair metrics stream");
 
-        DataStream<M> result = null;
+                // Add sinks
+                log.debug("Adding sink for pair metrics");
+                pairMetrics
+                                .map(metric -> {
+                                        log.debug("Sending PairMetric to sink: {}", metric);
+                                        return metric;
+                                })
+                                .addSink(PostgresSink.createPairMetricSink())
+                                .name("Pair Metrics Sink");
 
-        if ("token".equals(metricType)) {
-            @SuppressWarnings("unchecked")
-            KeyedStream<Token, String> tokenStream = (KeyedStream<Token, String>) stream;
+                // log.debug("Adding sink for token recent metrics");
+                tokenRecentMetrics
+                                .map(metric -> {
+                                        log.debug("Sending TokenRecentMetric to sink: {}", metric);
+                                        return metric;
+                                })
+                                .addSink(PostgresSink.createTokenRecentMetricSink())
+                                .name("Token Recent Metrics Sink");
 
-            // Base window (20s)
-            DataStream<TokenMetric> baseWindow = tokenStream
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.seconds(20)))
-                    .process(new TokenWindowProcessor("20s"))
-                    .name("20s-token-window");
+                log.debug("Adding sink for token rolling metrics");
+                // tokenRollingMetrics
+                // .map(metric -> {
+                // log.debug("Sending TokenRollingMetric to sink: {}", metric);
+                // if (metric.getTokenId() == null) {
+                // log.error("TokenRollingMetric has null tokenId: {}", metric);
+                // }
+                // if (metric.getTimeWindow() == null) {
+                // log.error("TokenRollingMetric has null timeWindow: {}", metric);
+                // // 如果timeWindow为null，设置默认值
+                // metric.setTimeWindow("20s");
+                // log.debug("Set default timeWindow for TokenRollingMetric: {}", metric);
+                // }
+                // return metric;
+                // })
+                // .filter(metric -> metric != null) // 过滤掉null值
+                // .addSink(PostgresSink.createTokenRollingMetricSink())
+                // .name("Token Rolling Metrics Sink");
 
-            // 1-minute window from 20s windows
-            DataStream<TokenMetric> oneMinWindow = baseWindow
-                    .keyBy(metric -> metric.getTokenId().toString())
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.minutes(1)))
-                    .process(new TokenHierarchicalWindowAggregator("1min"))
-                    .name("1min-token-window");
+                System.out.println("Job started...");
+                log.info("Job started...");
 
-            // 5-minute window from 1-minute windows
-            DataStream<TokenMetric> fiveMinWindow = oneMinWindow
-                    .keyBy(metric -> metric.getTokenId().toString())
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.minutes(5)))
-                    .process(new TokenHierarchicalWindowAggregator("5min"))
-                    .name("5min-token-window");
-
-            // 30-minute window from 5-minute windows
-            DataStream<TokenMetric> thirtyMinWindow = fiveMinWindow
-                    .keyBy(metric -> metric.getTokenId().toString())
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.minutes(30)))
-                    .process(new TokenHierarchicalWindowAggregator("30min"))
-                    .name("30min-token-window");
-
-            // Merge all window results
-            result = (DataStream<M>) baseWindow
-                    .union(oneMinWindow)
-                    .union(fiveMinWindow)
-                    .union(thirtyMinWindow);
-
-        } else if ("pair".equals(metricType)) {
-            @SuppressWarnings("unchecked")
-            KeyedStream<Pair, String> pairStream = (KeyedStream<Pair, String>) stream;
-
-            // Base window (20s)
-            DataStream<PairMetric> baseWindow = pairStream
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.seconds(20)))
-                    .process(new PairWindowProcessor("20s"))
-                    .name("20s-pair-window");
-
-            // 1-minute window from 20s windows
-            DataStream<PairMetric> oneMinWindow = baseWindow
-                    .keyBy(metric -> metric.getPairId().toString())
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.minutes(1)))
-                    .process(new PairHierarchicalWindowAggregator("1min"))
-                    .name("1min-pair-window");
-
-            // 5-minute window from 1-minute windows
-            DataStream<PairMetric> fiveMinWindow = oneMinWindow
-                    .keyBy(metric -> metric.getPairId().toString())
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.minutes(5)))
-                    .process(new PairHierarchicalWindowAggregator("5min"))
-                    .name("5min-pair-window");
-
-            // 30-minute window from 5-minute windows
-            DataStream<PairMetric> thirtyMinWindow = fiveMinWindow
-                    .keyBy(metric -> metric.getPairId().toString())
-                    .window(TumblingProcessingTimeWindows.of(
-                            Time.minutes(30)))
-                    .process(new PairHierarchicalWindowAggregator("30min"))
-                    .name("30min-pair-window");
-
-            // Merge all window results
-            result = (DataStream<M>) baseWindow
-                    .union(oneMinWindow)
-                    .union(fiveMinWindow)
-                    .union(thirtyMinWindow);
+                env.execute("DeFi Metrics Aggregator");
         }
 
-        return result;
-    }
+        private static BroadcastStream<PairMetadata> createPairMetadataBroadcast(StreamExecutionEnvironment env) {
+                // Create pair metadata source
+                PairMetadataSource source = new PairMetadataSource(config.getPairMetadataRefreshInterval());
+                return env.addSource(source)
+                                .setParallelism(1)
+                                .broadcast(PAIR_METADATA_DESCRIPTOR);
+        }
 }

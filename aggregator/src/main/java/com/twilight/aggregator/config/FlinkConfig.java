@@ -1,5 +1,8 @@
 package com.twilight.aggregator.config;
 
+import org.apache.flink.configuration.Configuration;
+import java.util.Properties;
+
 public class FlinkConfig extends BaseConfig {
 
     private static class SingletonHelper {
@@ -43,5 +46,68 @@ public class FlinkConfig extends BaseConfig {
 
     public String getUsdcAddress() {
         return getProperty("token.usdc.address", "0x74A6379d012ce53E3b0718C05dD72a3De87F0c6a");
+    }
+
+    // Environment Configuration
+    public Configuration getEnvironmentConfig() {
+        Configuration configuration = new Configuration();
+
+        // Web UI配置
+        configuration.setString("rest.bind-port", getProperty("flink.rest.bind-port", "8083"));
+        configuration.setString("rest.address", getProperty("flink.rest.address", "localhost"));
+
+        // 资源配置
+        configuration.setString("taskmanager.memory.network.fraction",
+                getProperty("flink.taskmanager.memory.network.fraction", "0.3"));
+        configuration.setInteger("taskmanager.numberOfTaskSlots", getIntProperty("flink.taskmanager.slots", "1"));
+        configuration.setString("taskmanager.memory.task.heap.size",
+                getProperty("flink.taskmanager.memory.task.heap.size", "2048m"));
+        configuration.setString("taskmanager.memory.task.off-heap.size",
+                getProperty("flink.taskmanager.memory.task.off-heap.size", "512m"));
+        configuration.setString("taskmanager.memory.network.min",
+                getProperty("flink.taskmanager.memory.network.min", "512mb"));
+        configuration.setString("taskmanager.memory.network.max",
+                getProperty("flink.taskmanager.memory.network.max", "512mb"));
+        configuration.setString("jobmanager.memory.process.size",
+                getProperty("flink.jobmanager.memory.process.size", "1024m"));
+
+        // 缓冲区配置
+        configuration.setString("taskmanager.network.memory.buffer-size",
+                getProperty("flink.taskmanager.network.buffer-size", "32kb"));
+        configuration.setString("taskmanager.network.memory.floating-buffers-per-gate",
+                getProperty("flink.taskmanager.network.floating-buffers-per-gate", "1024"));
+        configuration.setString("taskmanager.network.memory.buffers-per-channel",
+                getProperty("flink.taskmanager.network.buffers-per-channel", "8"));
+        configuration.setString("taskmanager.network.detailed-metrics",
+                getProperty("flink.taskmanager.network.detailed-metrics", "false"));
+        configuration.setBoolean("taskmanager.network.blocking-shuffle.compression.enabled",
+                getBooleanProperty("flink.taskmanager.network.blocking-shuffle.compression.enabled", "false"));
+
+        // 状态后端配置
+        configuration.setString("state.backend", getProperty("flink.state.backend", "hashmap"));
+        configuration.setString("state.backend.incremental", getProperty("flink.state.backend.incremental", "true"));
+        configuration.setString("state.checkpoints.num-retained",
+                getProperty("flink.state.checkpoints.num-retained", "2"));
+
+        // 重启策略配置
+        configuration.setString("restart-strategy", getProperty("flink.restart-strategy", "fixed-delay"));
+        configuration.setString("restart-strategy.fixed-delay.attempts",
+                getProperty("flink.restart-strategy.fixed-delay.attempts", "3"));
+        configuration.setString("restart-strategy.fixed-delay.delay",
+                getProperty("flink.restart-strategy.fixed-delay.delay", "10s"));
+
+        return configuration;
+    }
+
+    // Kafka Properties
+    public Properties getKafkaProperties() {
+        Properties properties = new Properties();
+        properties.setProperty("fetch.min.bytes", getProperty("kafka.fetch.min.bytes", "1"));
+        properties.setProperty("fetch.max.wait.ms", getProperty("kafka.fetch.max.wait.ms", "100"));
+        properties.setProperty("max.poll.records", getProperty("kafka.max.poll.records", "500"));
+        properties.setProperty("enable.auto.commit", getProperty("kafka.enable.auto.commit", "false"));
+        properties.setProperty("auto.offset.reset", getProperty("kafka.auto.offset.reset", "latest"));
+        properties.setProperty("isolation.level", getProperty("kafka.isolation.level", "read_committed"));
+        return properties;
     }
 }

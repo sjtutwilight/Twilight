@@ -14,4 +14,6 @@ public class Token implements Serializable {
     private boolean buyOrSell;
     private double amount;
     private String fromAddress;
+    private String fromAddressTag;
+    private Long timestamp;
 }

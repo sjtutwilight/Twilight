@@ -2,12 +2,14 @@ package com.twilight.aggregator.config;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Serializable;
 import java.util.Properties;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public abstract class BaseConfig {
+public abstract class BaseConfig implements Serializable {
+    private static final long serialVersionUID = 1L;
     private static Logger LOG = LoggerFactory.getLogger(BaseConfig.class);
     protected final Properties properties;
 

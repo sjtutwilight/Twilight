@@ -3,6 +3,7 @@ package kafka
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/IBM/sarama"
 )
@@ -20,11 +21,17 @@ func NewProducer(brokers []string, topic string) (*Producer, error) {
 	config.Producer.Retry.Max = 5
 	config.Producer.Return.Successes = true
 
+	// Enable idempotent producer to prevent duplicate messages
+	// This requires Kafka >= 0.11.0.0
+	config.Producer.Idempotent = true
+	config.Net.MaxOpenRequests = 1 // Required for idempotent producer
+
 	producer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create producer: %w", err)
 	}
 
+	log.Printf("Created Kafka producer with idempotence enabled for topic %s", topic)
 	return &Producer{
 		producer: producer,
 		topic:    topic,
@@ -50,7 +57,7 @@ func (p *Producer) SendMessage(key string, value interface{}) error {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
-	fmt.Printf("Message sent to partition %d at offset %d\n", partition, offset)
+	log.Printf("Message sent to partition %d at offset %d with key %s", partition, offset, key)
 	return nil
 }
 

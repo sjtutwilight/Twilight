@@ -2,35 +2,12 @@ const hre = require("hardhat");
 const { ethers } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
+const { TOKEN_CONFIG, PAIR_CONFIG, SIMULATION_CONFIG, getTokenBySymbol } = require("./config");
 
-// Simulation parameters
-const SWAP_PROBABILITY = 0.6;  // 60% chance of swap vs liquidity operations
-const MIN_DELAY = 1000;  // 1 second
-const MAX_DELAY = 6000;  // 6 seconds
-
-// Token price ratios (approximate)
-const TOKEN_CONFIGS = {
-  'WETH': {
-    baseAmount: [0.1, 1],     // 0.1-1 ETH (smaller amounts for higher price)
-    priceUSD: 3000            // $3000 per ETH
-  },
-  'USDC': {
-    baseAmount: [100, 10000], // 100-10000 USDC
-    priceUSD: 1               // Stablecoin
-  },
-  'DAI': {
-    baseAmount: [100, 10000], // 100-10000 DAI
-    priceUSD: 1               // Stablecoin
-  },
-  'TWI': {
-    baseAmount: [10, 1000],   // 10-1000 TWI
-    priceUSD: 50              // $50 per TWI
-  },
-  'WBTC': {
-    baseAmount: [0.01, 0.1],  // 0.01-0.1 BTC (smaller amounts for higher price)
-    priceUSD: 120000          // $120000 per BTC
-  }
-};
+// Simulation parameters from config
+const SWAP_PROBABILITY = SIMULATION_CONFIG.SWAP_PROBABILITY;
+const MIN_DELAY = SIMULATION_CONFIG.MIN_DELAY;
+const MAX_DELAY = SIMULATION_CONFIG.MAX_DELAY;
 
 // Helper function to sleep
 function sleep(ms) {
@@ -49,26 +26,26 @@ function getRandomFloat(min, max) {
 
 // Helper function to get random amount based on token
 function getRandomAmount(symbol, decimals) {
-  const config = TOKEN_CONFIGS[symbol];
-  if (!config) {
+  const token = getTokenBySymbol(symbol);
+  if (!token) {
     throw new Error(`Unknown token: ${symbol}`);
   }
 
-  const [min, max] = config.baseAmount;
+  const [min, max] = token.baseAmount;
   const amount = getRandomFloat(min, max);
   return ethers.parseUnits(amount.toFixed(4), decimals);
 }
 
 // Helper function to calculate equivalent amount based on price ratios
 function getEquivalentAmount(amount, fromSymbol, toSymbol, fromDecimals, toDecimals) {
-  const fromConfig = TOKEN_CONFIGS[fromSymbol];
-  const toConfig = TOKEN_CONFIGS[toSymbol];
-  if (!fromConfig || !toConfig) {
+  const fromToken = getTokenBySymbol(fromSymbol);
+  const toToken = getTokenBySymbol(toSymbol);
+  if (!fromToken || !toToken) {
     throw new Error(`Unknown token pair: ${fromSymbol}-${toSymbol}`);
   }
 
   const fromAmountInEth = ethers.formatUnits(amount, fromDecimals);
-  const priceRatio = fromConfig.priceUSD / toConfig.priceUSD;
+  const priceRatio = fromToken.priceUSD / toToken.priceUSD;
   const toAmount = parseFloat(fromAmountInEth) * priceRatio;
   
   // Add some randomness to the price (±10%)

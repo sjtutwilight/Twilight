@@ -15,66 +15,40 @@ flowchart TD
  broadcaststate o--connect--o stream:Event
   stream:Event -->pair预处理 --> stream:Pair
 	stream:Event -->token预处理 -->stream:Token
-	stream:Pair --keyby:contractaddress--> pair处理
-	stream:Token --keyby:tokenaddress-->token处理
-	 pair处理 --sink--> twswap_pair_metric
-	token处理 --sink-->token_metric
+	stream:Pair --keyby:contractaddress--> pair滚动窗口
+	stream:Token --keyby:tokenaddress-->token滚动窗口
+  stream:Token --keyby:tokenaddress-->token滑动窗口
+	pair滚动窗口 --sink--> twswap_pair_metric
+	token滚动窗口 --sink-->token_metric
+  token滑动窗口 --sink-->token_metric_sliding
 	 
 redis[(redis)]
  subgraph pairjob
  pair预处理
  stream:Pair
- pair处理
+ pair滚动窗口
     end
  subgraph tokenjob
     token预处理
     stream:Token
-    token处理
+    token滚动窗口
+    token滑动窗口
     end
 subgraph postgresql
 token
 token_metric
+token_metric_sliding
 twswap_pair
 twswap_pair_metric
     end
 
 ```
-## entity
-PairMetric:
-  pairId: Long        # 交易对 ID
-  timeWindow: String  # 窗口时间 (20s, 1min, 5min, 30min)
-  endTime: Timestamp  # 窗口结束时间
-  token0Reserve: BigDecimal  # Token0 储备量
-  token1Reserve: BigDecimal  # Token1 储备量
-  reserveUsd: BigDecimal  # 交易对的总储备 USD 价值
-  token0VolumeUsd: BigDecimal  # Token0 交易量 (USD)
-  token1VolumeUsd: BigDecimal  # Token1 交易量 (USD)
-  volumeUsd: BigDecimal  # 总交易量 (USD)
-  txcnt: int  # 交易笔数
-Token:
-  tokenAddress: string  # Token 地址
-  tokenId: Long         # Token ID
-  tokenPriceUsd: BigDecimal  # Token 价格 (USD)
-  buyOrSell: boolean  #  根据 amountIn 和 amountOut 判断是买还是卖。
-  amount: BigDecimal  # 交易金额
-  fromAddress: string  # 交易发起地址
-TokenMetric:
-  tokenId: Long         # Token ID
-  timeWindow: String    # 窗口时间 (20s, 1min, 5min, 30min)
-  endTime: Timestamp    # 窗口结束时间
-  volumeUsd: BigDecimal  # 交易量 (USD)
-  txcnt: Integer        # 交易笔数
-  tokenPriceUsd: BigDecimal  # Token 价格 (USD)
-  buyPressureUsd: BigDecimal  # 买入压力 (Buy Vol - Sell Vol)
-  buyersCount: Integer  # 买家数量
-  sellersCount: Integer  # 卖家数量
-  buyVolumeUsd: BigDecimal  # 买入成交量 (USD)
-  sellVolumeUsd: BigDecimal  # 卖出成交量 (USD)
 
 stream:Transaction--flatmap -->stream:Event时将fromAddress写入Event方便后面处理获取。
 ## 层次化窗口处理
 先计算 最小时间粒度（20s） 的窗口结果。
 依次累积到 更大窗口，避免重复计算。
+
 ## tokenPriceUsd
 以twswap_pair表中各token 与usdc的pair的reserve比值为usd价格,usdc价格为1。reserve从twswap_pair_metric最新的数据获取
 比如weth是token0,usdc是token1,weth的tokenPriceUsd为token1_reserve/token0_reserve，反之同理
@@ -118,17 +92,52 @@ flatmap成两个Token实体(token0与token1)
 
 ## token处理
 keyBy:tokenAddress
-多个滚动时间窗口，窗口时间为20s,1min,5min,30min
+多个滚动时间窗口，窗口时间为20s,1min,5min,1h
 ### 指标计算
 所有指标为窗口期累加值，初始值为0：
 - volume_usd amount*tokenPriceUsd
 - buy_volume_usd+= buyOrSell==true?amount*tokenPriceUsd:0
 - sell_volume_usd+=buyOrSell==false?amount*tokenPriceUsd:0
 - buy_pressure_usd= buy_volume_usd-sell_volume_usd
-- buyers_count = buyOrSell==true的txOriginAddress集合
-- sellers_count =buyOrSell==false的txOriginAddress集合
-- makers_count = buyers_count+sellers_count
-- buy_count : if buyOrSell==true ,txcnt++
+- - buy_count : if buyOrSell==true ,txcnt++
 - sell_count: if buyOrSell==false,txcnt++
 - txcnt++
+<!-- - buyers_count = buyOrSell==true的txOriginAddress集合
+- sellers_count =buyOrSell==false的txOriginAddress集合
+- makers_count = buyers_count+sellers_count -->
 
+
+### token滚动窗口
+sink:表token_rolling_metric
+使用层次化窗口处理
+## token滑动窗口
+sink:表token_metric
+窗口统一以20s为滑动步长,20s窗口独立计算，其他以20s聚合结果进行增量聚合。
+```mermaid
+sequenceDiagram
+    participant 20s as 20sSlidingWindow
+    participant 20sMetric as MapState<br>20sMetric
+    participant latestMetric as MapState<br>latestMetric
+    participant highlevelWindow
+    participant postgres as postgres<br>token_metric_sliding
+    20s->>20sMetric:写入状态
+    20s->>postgres:sink
+    highlevelWindow ->>20sMetric:获取最新20sMetric与滑动后退出窗口的20sMetric
+    highlevelWindow ->>latestMetric:获取上一次聚合指标
+    highlevelWindow ->>highlevelWindow :计算新聚合指标
+    highlevelWindow ->>latestMetric:更新相应键值
+    highlevelWindow ->>postgres:sink
+```
+### 状态
+
+MapState<Long,TokenMetricSLiding> 20sMetric  :key为时间戳，存储一小时内20s滑动窗口的历史值
+
+MapState<String,TokenMetricSLiding> latestMetric : key为1min,5min,1h，存储相应滑动窗口上一次聚合值
+
+### 增量聚合逻辑
+
+1.获取最新20sMetric与滑动后退出窗口的20sMetric，如5分钟窗口需要获取 时间戳为五分钟前的指标
+
+2.新指标通过对上一次聚合指标增加新值减去退出值来计算
+
+3.采用增量聚合的指标。volume_usd，buy_volume_usd，sell_volume_usd，buy_count，sell_count

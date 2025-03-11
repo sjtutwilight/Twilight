@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -53,7 +54,8 @@ func NewChainEvent(block *types.Block, tx *types.Transaction, receipt *types.Rec
 	event := &ChainEvent{}
 	event.Transaction.BlockNumber = block.Number().Int64()
 	event.Transaction.BlockHash = block.Hash().Hex()
-	event.Transaction.Timestamp = int64(block.Time())
+
+	event.Transaction.Timestamp = int64(time.Now().UnixMilli())
 	event.Transaction.TransactionHash = tx.Hash().Hex()
 	event.Transaction.TransactionIndex = int(receipt.TransactionIndex)
 	event.Transaction.TransactionStatus = getTransactionStatus(receipt.Status)

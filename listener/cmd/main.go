@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	configFile     = flag.String("config", "../common/pkg/config/config.yaml", "Path to configuration file")
-	deploymentFile = flag.String("deployment", "../deployment.json", "Path to deployment configuration file")
+	configFile     = flag.String("config", "../../common/pkg/config/config.yaml", "Path to configuration file")
+	deploymentFile = flag.String("deployment", "../../deployment.json", "Path to deployment configuration file")
 )
 
 func main() {
@@ -34,6 +34,7 @@ func main() {
 	deployment, err := config.LoadDeploymentConfig(*deploymentFile)
 	if err != nil {
 		log.Fatalf("Failed to load deployment configuration: %v", err)
+
 	}
 
 	// Create context that will be canceled on interrupt
@@ -108,10 +109,13 @@ func main() {
 			select {
 			case event := <-eventChan:
 				// Send event to Kafka using transaction hash as key
+				// This ensures that messages with the same key go to the same partition
+				// and can be deduplicated by consumers if needed
+
 				if err := producer.SendMessage(event.Transaction.TransactionHash, event); err != nil {
 					log.Printf("Failed to send event to Kafka: %v", err)
 				} else {
-					log.Printf("Sent event to Kafka: %+v", event)
+					log.Printf("Successfully sent event for transaction %s to Kafka", event.Transaction.TransactionHash)
 				}
 
 			case err := <-errorChan:

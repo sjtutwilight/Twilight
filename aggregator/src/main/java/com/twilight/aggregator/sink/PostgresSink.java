@@ -14,7 +14,8 @@ import org.slf4j.LoggerFactory;
 
 import com.twilight.aggregator.config.DatabaseConfig;
 import com.twilight.aggregator.model.PairMetric;
-import com.twilight.aggregator.model.TokenMetric;
+import com.twilight.aggregator.model.TokenRollingMetric;
+import com.twilight.aggregator.model.TokenRecentMetric;
 
 public class PostgresSink<T> extends RichSinkFunction<T> {
     private static transient Logger log;
@@ -35,22 +36,56 @@ public class PostgresSink<T> extends RichSinkFunction<T> {
 
     @Override
     public void invoke(T value, Context context) throws Exception {
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+        int retries = 0;
+        int maxRetries = 3;
+        long retryDelayMs = 1000;
+        Exception lastException = null;
 
-            if (value instanceof PairMetric) {
-                PairMetric metric = (PairMetric) value;
-                insertPairMetric(stmt, metric);
-            } else if (value instanceof TokenMetric) {
-                TokenMetric metric = (TokenMetric) value;
-                insertTokenMetric(stmt, metric);
+        log.info("PostgresSink: Invoking with value: {}", value);
+
+        while (retries < maxRetries) {
+            try (Connection conn = dataSource.getConnection();
+                    PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+
+                if (value instanceof PairMetric) {
+                    PairMetric metric = (PairMetric) value;
+                    insertPairMetric(stmt, metric);
+                    log.info("PostgresSink: Inserting PairMetric: {}", metric);
+                } else if (value instanceof TokenRollingMetric) {
+                    TokenRollingMetric metric = (TokenRollingMetric) value;
+                    insertTokenRollingMetric(stmt, metric);
+                    log.info("PostgresSink: Inserting TokenRollingMetric: {}", metric);
+                } else if (value instanceof TokenRecentMetric) {
+                    TokenRecentMetric metric = (TokenRecentMetric) value;
+                    insertTokenRecentMetric(stmt, metric);
+                    log.info("PostgresSink: Inserting TokenRecentMetric: {}", metric);
+                }
+
+                stmt.executeUpdate();
+                log.info("PostgresSink: Successfully executed update");
+                return; // 成功执行，退出方法
+            } catch (SQLException e) {
+                lastException = e;
+                retries++;
+                log.warn("Error writing to database (attempt {}/{}): {}", retries, maxRetries, e.getMessage());
+
+                if (retries < maxRetries) {
+                    try {
+                        Thread.sleep(retryDelayMs);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrupted while waiting to retry database operation", ie);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Unexpected error writing to database", e);
+                throw e;
             }
-
-            stmt.executeUpdate();
-        } catch (Exception e) {
-            log.error("Error writing to database", e);
-            throw e;
         }
+
+        // 如果所有重试都失败，记录错误并抛出异常
+        log.error("Failed to write to database after {} attempts", maxRetries, lastException);
+        throw lastException;
     }
 
     private void insertPairMetric(PreparedStatement stmt, PairMetric metric) throws SQLException {
@@ -66,21 +101,47 @@ public class PostgresSink<T> extends RichSinkFunction<T> {
         stmt.setInt(10, metric.getTxcnt());
     }
 
-    private void insertTokenMetric(PreparedStatement stmt, TokenMetric metric) throws SQLException {
+    private void insertTokenRollingMetric(PreparedStatement stmt, TokenRollingMetric metric) throws SQLException {
+        try {
+            if (metric.getTokenId() == null) {
+                log.error("TokenRollingMetric has null tokenId: {}", metric);
+                throw new SQLException("TokenRollingMetric has null tokenId");
+            }
+
+            if (metric.getTimeWindow() == null) {
+                log.error("TokenRollingMetric has null timeWindow: {}", metric);
+                throw new SQLException("TokenRollingMetric has null timeWindow");
+            }
+
+            log.debug(
+                    "Inserting TokenRollingMetric: tokenId={}, timeWindow={}, endTime={}, volumeUsd={}, tokenPriceUsd={}",
+                    metric.getTokenId(), metric.getTimeWindow(), new Timestamp(metric.getEndTime()),
+                    metric.getVolumeUsd(), metric.getTokenPriceUsd());
+
+            stmt.setLong(1, metric.getTokenId());
+            stmt.setString(2, metric.getTimeWindow());
+            stmt.setTimestamp(3, new Timestamp(metric.getEndTime()));
+            stmt.setDouble(4, metric.getVolumeUsd());
+            stmt.setDouble(5, metric.getTokenPriceUsd());
+        } catch (SQLException e) {
+            log.error("Error inserting TokenRollingMetric: {}", e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    private void insertTokenRecentMetric(PreparedStatement stmt, TokenRecentMetric metric) throws SQLException {
         stmt.setLong(1, metric.getTokenId());
         stmt.setString(2, metric.getTimeWindow());
         stmt.setTimestamp(3, new Timestamp(metric.getEndTime()));
-        stmt.setDouble(4, metric.getVolumeUsd());
-        stmt.setInt(5, metric.getTxcnt());
-        stmt.setDouble(6, metric.getTokenPriceUsd());
-        stmt.setDouble(7, metric.getBuyPressureUsd());
-        stmt.setInt(8, metric.getBuyersCount());
-        stmt.setInt(9, metric.getSellersCount());
-        stmt.setDouble(10, metric.getBuyVolumeUsd());
-        stmt.setDouble(11, metric.getSellVolumeUsd());
-        stmt.setInt(12, metric.getMakersCount());
-        stmt.setInt(13, metric.getBuyCount());
-        stmt.setInt(14, metric.getSellCount());
+        stmt.setString(4, metric.getTag());
+        stmt.setInt(5, metric.getTxCnt());
+        stmt.setInt(6, metric.getBuyCount());
+        stmt.setInt(7, metric.getSellCount());
+        stmt.setDouble(8, metric.getVolumeUsd());
+        stmt.setDouble(9, metric.getBuyVolumeUsd());
+        stmt.setDouble(10, metric.getSellVolumeUsd());
+        stmt.setDouble(11, metric.getBuyPressureUsd());
+        stmt.setDouble(12, metric.getTokenPriceUsd());
     }
 
     public static PostgresSink<PairMetric> createPairMetricSink() {
@@ -98,24 +159,31 @@ public class PostgresSink<T> extends RichSinkFunction<T> {
                         "txcnt = EXCLUDED.txcnt");
     }
 
-    public static PostgresSink<TokenMetric> createTokenMetricSink() {
+    public static PostgresSink<TokenRollingMetric> createTokenRollingMetricSink() {
         return new PostgresSink<>(
-                "INSERT INTO token_metric (token_id, time_window, end_time, volume_usd, txcnt, " +
-                        "token_price_usd, buy_pressure_usd, buyers_count, sellers_count, buy_volume_usd, sell_volume_usd, "
-                        +
-                        "makers_count, buy_count, sell_count) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                "INSERT INTO token_rolling_metric (token_id, time_window, end_time, volume_usd, " +
+                        "token_price_usd, update_time) " +
+                        "VALUES (?, ?, ?, ?, ?, ?) " +
                         "ON CONFLICT (token_id, time_window, end_time) DO UPDATE SET " +
                         "volume_usd = EXCLUDED.volume_usd, " +
-                        "txcnt = EXCLUDED.txcnt, " +
                         "token_price_usd = EXCLUDED.token_price_usd, " +
-                        "buy_pressure_usd = EXCLUDED.buy_pressure_usd, " +
-                        "buyers_count = EXCLUDED.buyers_count, " +
-                        "sellers_count = EXCLUDED.sellers_count, " +
+                        "update_time = EXCLUDED.update_time");
+    }
+
+    public static PostgresSink<TokenRecentMetric> createTokenRecentMetricSink() {
+        return new PostgresSink<>(
+                "INSERT INTO token_recent_metric (token_id, time_window, end_time, tag, txcnt, " +
+                        "buy_count, sell_count, volume_usd, buy_volume_usd, sell_volume_usd, " +
+                        "buy_pressure_usd, token_price_usd) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                        "ON CONFLICT (token_id, time_window, end_time, tag) DO UPDATE SET " +
+                        "txcnt = EXCLUDED.txcnt, " +
+                        "buy_count = EXCLUDED.buy_count, " +
+                        "sell_count = EXCLUDED.sell_count, " +
+                        "volume_usd = EXCLUDED.volume_usd, " +
                         "buy_volume_usd = EXCLUDED.buy_volume_usd, " +
                         "sell_volume_usd = EXCLUDED.sell_volume_usd, " +
-                        "makers_count = EXCLUDED.makers_count, " +
-                        "buy_count = EXCLUDED.buy_count, " +
-                        "sell_count = EXCLUDED.sell_count");
+                        "buy_pressure_usd = EXCLUDED.buy_pressure_usd, " +
+                        "token_price_usd = EXCLUDED.token_price_usd");
     }
 }

@@ -1,6 +1,9 @@
 package com.twilight.aggregator.model;
 
 import java.io.Serializable;
+
+import org.checkerframework.checker.units.qual.degrees;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -20,20 +23,21 @@ public class Pair implements Serializable {
     private String eventName;
 
     // Swap event args
-    private String amount0In;
-    private String amount0Out;
-    private String amount1In;
-    private String amount1Out;
+    private double amount0In;
+    private double amount0Out;
+    private double amount1In;
+    private double amount1Out;
 
     // Sync event args
-    private String reserve0;
-    private String reserve1;
+    private double reserve0;
+    private double reserve1;
 
     // Mint/Burn event args
     private String sender;
     private String to;
-    private String amount0;
-    private String amount1;
+    private double amount0;
+    private double amount1;
 
     private String fromAddress;
+    private Long timestamp;
 }

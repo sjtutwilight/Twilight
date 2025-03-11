@@ -45,4 +45,7 @@ public class Event implements Serializable {
 
     @JsonProperty("fromAddress")
     private String fromAddress;
+
+    @JsonProperty("timestamp")
+    private Long timestamp;
 }

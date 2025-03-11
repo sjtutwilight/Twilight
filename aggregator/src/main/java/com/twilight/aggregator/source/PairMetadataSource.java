@@ -7,6 +7,8 @@ import java.sql.SQLException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -84,7 +86,8 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
     }
 
     private void queryAndEmit(SourceContext<PairMetadata> ctx) throws SQLException {
-        String sql = "SELECT " +
+        // 查询 pair 和 token 信息
+        String pairSql = "SELECT " +
                 "p.id as pair_id, " +
                 "p.pair_address, " +
                 "p.token0_id, " +
@@ -94,10 +97,13 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
                 "FROM twswap_pair p " +
                 "JOIN token t0 ON p.token0_id = t0.id " +
                 "JOIN token t1 ON p.token1_id = t1.id " +
-                "WHERE p.chain_id = '31337'"; // 假设 chain_id 为 1，可以从配置中获取
+                "WHERE p.chain_id = '31337'"; // 假设 chain_id 为 31337，可以从配置中获取
+
+        // 创建 PairMetadata 映射，用于后续添加 tag 信息
+        Map<String, PairMetadata> metadataMap = new HashMap<>();
 
         try (Connection conn = dataSource.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(sql);
+                PreparedStatement stmt = conn.prepareStatement(pairSql);
                 ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
@@ -109,14 +115,55 @@ public class PairMetadataSource extends RichSourceFunction<PairMetadata> {
                 metadata.setToken0Address(rs.getString("token0_address"));
                 metadata.setToken1Address(rs.getString("token1_address"));
 
-                synchronized (ctx.getCheckpointLock()) {
-                    ctx.collect(metadata);
+                // 将 metadata 添加到映射中
+                metadataMap.put(metadata.getPairAddress().toLowerCase(), metadata);
+            }
+        }
+
+        // 如果没有 pair 数据，直接返回
+        if (metadataMap.isEmpty()) {
+            LOG.warn("No pair metadata found in database");
+            return;
+        }
+
+        // 查询 account 表中的 tag 信息
+        String accountSql = "SELECT address, " +
+                "smart_money_tag, cex_tag, big_whale_tag, fresh_wallet_tag " +
+                "FROM account " +
+                "WHERE smart_money_tag = true OR cex_tag = true OR " +
+                "big_whale_tag = true OR fresh_wallet_tag = true";
+
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(accountSql);
+                ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                String address = rs.getString("address");
+                String tag = "all"; // 默认标签
+
+                // 确定标签，只会有一个为 true
+                if (rs.getBoolean("smart_money_tag")) {
+                    tag = "smart_money";
+                } else if (rs.getBoolean("cex_tag")) {
+                    tag = "cex";
+                } else if (rs.getBoolean("big_whale_tag")) {
+                    tag = "whale"; // 将 big_whale_tag 对应的标签从 dex 改为 whale
+                } else if (rs.getBoolean("fresh_wallet_tag")) {
+                    tag = "fresh_wallet";
+                }
+
+                // 为所有 PairMetadata 添加地址标签
+                for (PairMetadata metadata : metadataMap.values()) {
+                    metadata.addAddressTag(address, tag);
+                    LOG.debug("Added tag for address: {}, tag: {}", address, tag);
                 }
             }
-            LOG.info("Successfully loaded pair metadata from database");
-        } catch (SQLException e) {
-            LOG.error("Failed to query pair metadata: {}", e.getMessage());
-            throw e;
+        }
+
+        // 发送所有 PairMetadata 到下游
+        for (PairMetadata metadata : metadataMap.values()) {
+            ctx.collect(metadata);
+            LOG.debug("Emitted pair metadata: {}", metadata);
         }
     }
 

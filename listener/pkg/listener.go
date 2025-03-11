@@ -32,6 +32,11 @@ type EventListener struct {
 	confirmationTimeout   time.Duration
 	mu                    sync.Mutex
 	lastBlockNumber       uint64
+	// Add a transaction cache to prevent duplicate processing
+	processedTxs   map[string]bool
+	processedTxsMu sync.RWMutex
+	// TTL for processed transactions (default: 1 hour)
+	processedTxsTTL time.Duration
 }
 
 // NewEventListener creates a new event listener
@@ -57,6 +62,12 @@ func NewEventListener(client *ethclient.Client, blockDelay uint64) (*EventListen
 		confirmationTimeout = 30 * time.Second // Default confirmation timeout
 	}
 
+	// Get TTL for processed transactions from config or use default (1 hour)
+	processedTxsTTL := time.Duration(viper.GetInt("chain.processed_txs_ttl_ms")) * time.Millisecond
+	if processedTxsTTL <= 0 {
+		processedTxsTTL = 1 * time.Hour // Default TTL
+	}
+
 	return &EventListener{
 		client:                client,
 		contracts:             make(map[common.Address]*Contract),
@@ -69,6 +80,8 @@ func NewEventListener(client *ethclient.Client, blockDelay uint64) (*EventListen
 		retryInterval:         retryInterval,
 		requiredConfirmations: requiredConfirmations,
 		confirmationTimeout:   confirmationTimeout,
+		processedTxs:          make(map[string]bool),
+		processedTxsTTL:       processedTxsTTL,
 	}, nil
 }
 
@@ -76,6 +89,9 @@ func NewEventListener(client *ethclient.Client, blockDelay uint64) (*EventListen
 func (l *EventListener) Start(ctx context.Context) error {
 	ticker := time.NewTicker(l.pollingInterval)
 	defer ticker.Stop()
+
+	// Start a goroutine to clean up old processed transactions
+	go l.cleanupProcessedTxs(ctx)
 
 	for {
 		select {
@@ -89,6 +105,40 @@ func (l *EventListener) Start(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// cleanupProcessedTxs periodically removes old processed transactions
+func (l *EventListener) cleanupProcessedTxs(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Minute) // Clean up every 10 minutes
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// In a real implementation, we would track timestamps for each tx
+			// and remove based on age. For simplicity, we're just clearing the map.
+			l.processedTxsMu.Lock()
+			l.processedTxs = make(map[string]bool)
+			l.processedTxsMu.Unlock()
+			log.Printf("Cleaned up processed transactions cache")
+		}
+	}
+}
+
+// isProcessedTx checks if a transaction has already been processed
+func (l *EventListener) isProcessedTx(txHash string) bool {
+	l.processedTxsMu.RLock()
+	defer l.processedTxsMu.RUnlock()
+	return l.processedTxs[txHash]
+}
+
+// markTxProcessed marks a transaction as processed
+func (l *EventListener) markTxProcessed(txHash string) {
+	l.processedTxsMu.Lock()
+	defer l.processedTxsMu.Unlock()
+	l.processedTxs[txHash] = true
 }
 
 func (l *EventListener) pollNewBlocks(ctx context.Context) error {
@@ -111,7 +161,6 @@ func (l *EventListener) pollNewBlocks(ctx context.Context) error {
 	log.Printf("Will process blocks from %d to %d", lastProcessed+1, endBlock)
 
 	for blockNum := lastProcessed + 1; blockNum <= endBlock; blockNum++ {
-		log.Printf("Processing block %d", blockNum)
 		if err := l.processBlock(ctx, blockNum); err != nil {
 			log.Printf("Failed to process block %d: %v", blockNum, err)
 			return fmt.Errorf("failed to process block %d: %w", blockNum, err)
@@ -153,24 +202,27 @@ func (l *EventListener) processBlock(ctx context.Context, blockNum uint64) error
 }
 
 func (l *EventListener) processTransaction(ctx context.Context, tx *ethtypes.Transaction, block *ethtypes.Block, blockNum uint64) error {
+	txHash := tx.Hash().Hex()
+
+	// Check if this transaction has already been processed
+	if l.isProcessedTx(txHash) {
+		log.Printf("Skipping already processed transaction %s", txHash)
+		return nil
+	}
+
 	receipt, err := l.client.TransactionReceipt(ctx, tx.Hash())
 	if err != nil {
 		return fmt.Errorf("failed to get transaction receipt: %w", err)
 	}
-
-	log.Printf("Transaction %s has %d logs", tx.Hash().Hex(), len(receipt.Logs))
 
 	// Create a single chain event for the transaction
 	event := types.NewChainEvent(block, tx, receipt, nil, "")
 
 	// Process logs
 	for _, logEntry := range receipt.Logs {
-		log.Printf("Processing log from contract %s", logEntry.Address.Hex())
 		if contract, exists := l.contracts[logEntry.Address]; exists {
-			log.Printf("Found contract for address %s", logEntry.Address.Hex())
 			// Check if this log matches any of our registered event signatures
 			if contract.IsInterestedInLog(logEntry) {
-				log.Printf("Found matching event signature for log in contract %s", logEntry.Address.Hex())
 				eventName := contract.GetEventName(logEntry.Topics[0])
 
 				// Decode event arguments based on event type
@@ -272,7 +324,9 @@ func (l *EventListener) processTransaction(ctx context.Context, tx *ethtypes.Tra
 	// Only send the event if it has any events
 	if len(event.Events) > 0 {
 		l.eventChan <- event
-		log.Printf("Sent transaction %s with %d events to channel", tx.Hash().Hex(), len(event.Events))
+		// Mark this transaction as processed
+		l.markTxProcessed(txHash)
+		log.Printf("Processed transaction %s with %d events", txHash, len(event.Events))
 	}
 
 	return nil
