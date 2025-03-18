@@ -1,7 +1,8 @@
 package com.twilight.aggregator.config;
 
-import org.apache.flink.configuration.Configuration;
 import java.util.Properties;
+
+import org.apache.flink.configuration.Configuration;
 
 public class FlinkConfig extends BaseConfig {
 
@@ -32,7 +33,7 @@ public class FlinkConfig extends BaseConfig {
     }
 
     public String getKafkaTopic() {
-        return getProperty("kafka.topic", "chain_transactions_new");
+        return getProperty("kafka.topic", "dex_transaction");
     }
 
     public String getKafkaGroupId() {

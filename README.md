@@ -1,36 +1,48 @@
-# 系统整体设计
-项目名称：defi数据服务平台
-项目目标：**通过链上数据分析帮助用户发现机会并规避风险**。
-主要工作流：在本地节点模拟链上交易，监听节点数据，数据实时处理后进行大盘展示或事件通知，在后台通过决策大脑系统进行基于事件的监管
+# 系统整体设计 
+项目名称：基于ai智能体的加密货币自动投资系统（MVP）
+主要工作流：在本地节点模拟链上交易，监听本地node数据，实时处理后作为agent输入并进行大盘展示，
+ps:本文档为给agent参考的唯一信任源，略凌乱。
+## 
+
 ## 核心模块
 1. **交易模拟器（simulator）**：在本地 Hardhat 节点中模拟多账户多场景的链上操作，为其他模块提供持续数据流。
-2. **链监听器(listener)**：监听本地节点，将链原生数据格式转化成规定消息格式后，推送到消息队列。
+2. **数据接入模块(listener)**：监听本地节点，将链原生数据格式转化成规定消息格式后，推送到消息队列。
 3. **链处理器（processor）**：微服务，消费指定消息流，映射后写入数据库A（写库）
 4. **链聚合器（aggregator）**：flink，消费指定消息流，进行窗口计算，sink到数据库A或消息队列
 5. **CQRS同步器（synchronizer）**：使用CQRS模式将数据库A数据映射到数据库B（读库）
 6. **查询器(uniQuery)**，为前端提供查询服务，以可视化方式呈现交易趋势、dex流动性等。
-7. **决策大脑(brain)**：整个系统的调控中心，目前需求功能：接入事件（链上事件、用户事件），根据预设的决策大脑（DAG）进行节点调度
+7. **决策大脑(brain)**：整个系统的调控中心，目前需求功能：接入事件（链上事件、用户事件），根据预设的决策大脑（DAG）进行节点调
 ## 主要原理图 
 ### 整体业务流程
 
 ```mermaid 
-flowchart TB
-    交易模拟器["交易模拟器"] --> 本地节点["本地节点"]
-    链监听器["链监听器"] -- 读取 --> 本地节点
-    链监听器 -- produce --> s1["kafka"]
-    链聚合器["链聚合器"] -- consume --> s1
-    链聚合器 -- sink --> postgres["postgres"]
-    链处理器["链处理器"] -- consume --> s1
-    链处理器 -- 直接读取 --> 本地节点
-    链处理器 -- crud --> postgres
-    决策大脑["决策大脑"] -- consume --> s1
-    查询服务["查询服务"] -- 查询 --> postgres
-    决策大脑 -- 查询 --> postgres
-    用户端["用户端"] -- 查询 --> 查询服务
-    决策大脑 -- 推送通知 --> 用户端
-    postgres -. 变更 .-> s1
-    s1@{ shape: h-cyl}
-    postgres@{ shape: cyl}
+flowchart TD
+	subgraph datasource
+	localnode
+	end
+	datasource--listen--> listener
+	listener
+	listener--produce-->kafka1[(kafka)]
+	kafka1 --consume-->aggregator 
+	kafka1 --consume-->processor 
+	subgraph processLayer
+	aggregator
+	processor
+	end
+	processLayer--sink-->dataStore
+	subgraph dataStore
+	postgresql
+	end
+	agent--extension/RAG-->dataStore
+	subgraph wallet
+		privateKey
+		mcp
+		display
+	end
+	simulator-->localnode
+	uniquery-->dataStore
+	display--graphql-->uniquery
+	agent --function tool-->mcp
 
 ```
 ### 数据模型
@@ -154,57 +166,82 @@ accountAsset ||--||accountAssetView:cdc
 
 ### 数据流图
 ```mermaid
-flowchart 
+flowchart TB
+ subgraph 数据采集层["数据采集层"]
+        listener["listener"]
+        localnode(("localnode"))
+        kafka[/"kafka"/]
+  end
+ subgraph s2["数据处理层"]
+        microservice{"microservice"}
+        flink{"flink"}
+        scheduler["scheduler"]
+  end
+ subgraph accountDomain["accountDomain"]
+        account[("account")]
+        accountAsset[("accountAsset")]
+  end
+ subgraph token窗口聚合["token窗口聚合"]
+        tokenRollingMetric[("tokenRollingMetric")]
+        tokenRecentMetric[("tokenRecentMetric")]
+  end
+ subgraph tokenDomain["tokenDomain"]
+        token[("token")]
+        token窗口聚合
+        tokenMetric[("tokenMetric")]
+        tokenHolder[("tokenHolder")]
+  end
+ subgraph transactionDomain["transactionDomain"]
+        transaction[("transaction")]
+        transferEvent["transferEvent"]
+  end
+ subgraph s4["cqrs视图"]
+        accountTransferHistory[("accountTransferHistory")]
+        accountAssetView[("accountAssetView")]
+  end
+    kafka --> flink & microservice
+    microservice --> transactionDomain
+    microservice -- assetType为erc20||defiPosition --> accountAsset
+    scheduler --> tokenMetric & tokenHolder
+    scheduler -- assetType为native --> accountAsset
+    flink --> token窗口聚合
+    transferEvent --> accountTransferHistory
+    accountAsset --> accountAssetView
+    localnode --> listener
+    listener --> kafka
 
-kafka -->flink{flink}
-kafka -->microservice{microservice}
-
-microservice-->transactionDomain
-microservice--assetType为erc20||defiPosition-->accountAsset
-scheduler-->tokenMetric:::querySource
-scheduler-->tokenHolder:::querySource
-scheduler--assetType为native-->accountAsset
-flink-->token窗口聚合
-transferEvent-->accountTransferHistory
-accountAsset -->accountAssetView
-transaction[(transaction)]
-subgraph 数据采集层
-localnode((localnode)) -->listener
-listener -->kafka[/kafka event store/]
-end
-subgraph 数据处理层
-microservice
-flink
-scheduler
-end
-subgraph accountDomain
-	account[(account)]:::querySource
-			accountAsset[(accountAsset)]
-end
-subgraph tokenDomain
-token[(token)]:::querySource
-subgraph token窗口聚合
-	tokenRollingMetric[(tokenRollingMetric)]:::querySource
-		tokenRecentMetric[(tokenRecentMetric)]:::querySource
-		end
-			tokenMetric[(tokenMetric)]
-	tokenHolder[(tokenHolder)]
-end
-subgraph transactionDomain
-	transaction:::querySource
-	transferEvent:::querySource
-	end
-subgraph 视图[cqrs视图]
-	accountTransferHistory[(accountTransferHistory)]:::querySource
-	accountAssetView[(accountAssetView)]:::querySource
-end
- classDef querySource fill:#f96
+     account:::querySource
+     tokenRollingMetric:::querySource
+     tokenRecentMetric:::querySource
+     token:::querySource
+     tokenMetric:::querySource
+     tokenHolder:::querySource
+     transaction:::querySource
+     transferEvent:::querySource
+     accountTransferHistory:::querySource
+     accountAssetView:::querySource
+    classDef querySource fill:#f96
+    style listener fill:#FFF9C4
+    style localnode fill:#FFCDD2
+    style kafka fill:#BBDEFB
+    style microservice fill:#BBDEFB
+    style flink fill:#BBDEFB
+    style scheduler fill:#FFF9C4
+    style accountAsset fill:#FFFFFF
+    style token窗口聚合 fill:#E1BEE7
+    style transactionDomain fill:#C8E6C9
+    style 数据采集层 fill:#C8E6C9
+    style s2 fill:#C8E6C9
+    style accountDomain fill:#C8E6C9
+    style tokenDomain fill:#C8E6C9
+    style s4 fill:#C8E6C9
 ```
 
-
-account,account_asset,token,twswap_pair
 ## 项目约定
-1.链合约部署信息位于 deployment.json 2.相同含义字段名称统一，比如只使用transactionHash而不使用txHash，如果外部依赖命名与系统约定不一致，转换成系统约定。3.数据库表结构位置 TableStructure.md 4.使用usdc作为唯一美元价格锚定，代币价格为与usdc交易对价格，交易对一定存在 5.使用项目根目录的docker-compose.yml作为唯一docker容器
+1. 链合约部署信息位于 deployment.json 
+2. 相同含义字段名称统一，比如只使用transactionHash而不使用txHash，如果外部依赖命名与系统约定不一致，转换成系统约定。
+3. 使用usdc作为唯一美元价格锚定，代币价格为与usdc交易对价格
+4. 使用项目根目录的docker-compose.yml作为唯一docker容器
 
 ### 指标命名规则
 
@@ -215,150 +252,63 @@ account,account_asset,token,twswap_pair
 - **interval**: 窗口时间，如20s, 1min, 1h，省略则代表总量
 - **unit**: 单位，如usd，可根据共识省略，如次数
 
-## 数据格式
-### kafka 
-
-**topic:chain_transactions_new** 
-```json
-{    "transaction": {
-      "type": "object",
-      "properties": {
-        "blockNumber": { "type": "integer" },
-        "blockHash":   { "type": "string" },
-        "timestamp":   { "type": "integer" },
-        "transactionHash": { "type": "string" },
-        "transactionIndex":{ "type": "integer" },
-        "transactionStatus":      { "type": "string" },
-        "gasUsed":     { "type": "integer" },
-        "gasPrice":    { "type": "string" },
-        "nonce":       { "type": "integer" },
-        "fromAddress":        { "type": "string" },
-        "toAddress":          { "type": "string" },
-        "transactionValue":       { "type": "string" },
-        "inputData":   { "type": "string" },
-        "chainID":     { "type": "string" }
-      },
-      "required": ["blockNumber","transactionHash","fromAddress","toAddress","chainID"]
-    },
-    "events": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "eventName": { "type": "string" },
-          "contractAddress": { "type": "string" },
-          "logIndex":  { "type": "integer" },
-          "blockNumber": { "type": "integer" },
-          "topics":    {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "eventData":      { "type": "string" },
-          "decodedArgs": { "type": "object" }
-        },
-        "required": ["eventName","contractAddress","logIndex"]
-      }
-    }
-  }
+# 数据接入模块
+目标：接入并管理外部数据源，数据格式标准化写入消息队列。
+主要模块：数据监听器，数据标准化器，链重组处理器。
+## 数据监听器
+目标：接入并管理外部数据源
+主要组件：
+1. 监听方法：目前只有轮询 
+   1. 后续扩展：websocket,实时消息
+2. 数据源：表示具体数据源
+   1. 目前只有本地node :  使用 go-ethereum 的 ethclient 连接http://127.0.0.1:8545，监听区块及拉取日志。
+   2. 后续扩展：数据提供商api 如CoinMarketCap ，爬虫数据，cex api, 社交平台：如Twitter API.
+3. 数据源注册器：注册管理数据源生命周期
+## 数据标准化器
+目标：对多数据源数据统一标准化为内部格式
+目前实现：链上dex交易数据解析。
+## 生产者
+目标：将标准化的数据推送到kafka
+目前：dex交易数据：topic dex_transaction
+## 链重组处理器
+**记录区块信息**：保存已处理区块的哈希值及其父区块哈希。
+**检测重组信号**：当接收到新区块时，检查其父区块哈希是否与系统中记录的最新区块哈希一致。如果不一致则表明发生了链重组
+**重组通知：**推送一条消息到Kafka的reorg-events Topic，内容包括废弃区块范围（如高度100-105）和新区块范围（如高度100’-106’）。
+## 代码示例
+```go
+// 核心接口
+type DataSource interface {
+    Start(context.Context) error
+    Stop() error
 }
 
-```
-# 项目初始化
-本项目尽量避免繁琐的crud,采用初始化的方式为数据库里的元数据赋值.初始化文件位置：localnode/scripts/initialize.js
-## blockchain初始化
-1. updateInitCodeHash
-2. Deploy Contract
-3. 为account mint Tokens
-4. InitializePairs
-5. 保存deploymentInfo
-
-## 数据存储初始化
-### initializeRedis
-redis初始化内容
-1. token_price:{all token address}
-2. tokenMetadata,accountMetadata,pairMetadata from deployment.json
-### initializeDatabase
-根据deployment.json写入token,account表
-account_asset初始化:遍历account,从链上查找所有资产信息（eoa account balance,token balance,pair balance）分别写入asset_type为native,erc20,defiPosition中，bizId分别为1,token_id,pair_id.
-## 定时任务
-### startAccountAssetUpdater
-遍历account获取链上balance，bizId默认为1，bizName,accountAsset为native，写入accountAsset.
-### startTokenUpdater
-
-```伪代码
-for(token in all token){
-
-get totalsupply from localnode
-
-for(相关的pair ){
-
-reserveSum+=reserveInPair
-
-if pair含usdc
-
-token_price=reserve比
-
+// 连接策略抽象
+type ConnectionMethod interface {
+    Connect() error
+    Fetch() (Data, error)
+    Close() error
+}
+//数据源注册
+type Registry struct {
+    sources map[string]DataSource
+    mu      sync.RWMutex
 }
 
-if token is usdc
-
-token_price=1
-
-security_score，token_age=1～100随机数
-liquidity_usd=reserveSum*token_price
-fdv=mcap=totalsupply*token_price
-更新token_metric表
-
-for(account in all account){
-
-get token balance from localnode
-value_usd=balance*token_price
-ownership=balance/totalsupply
-更新token _holder表
+func (r *Registry) Register(id string, source DataSource) error {
+}
+//数据标准化
+type Normalizer interface {
+    Normalize(Data) (NormalizedData, error)
 }
 
+// 具体标准化实现
+type DexTransactionNormalizer struct{}
+
+func (n *DexTransactionNormalizer) Normalize(d Data) (NormalizedData, error) {
 }
 ```
-### tokenRollingMetric
-使用定时任务写token_rolling_metric表，周期为20s,end_time与整点对齐，token_price_usd从redis取，mcap=totalsupply*tokenprice ,totalsupply从链上查询。这张表用于前端绘制折线图
-# 交易模拟器
-	1.	目标：在本地节点中模拟多账户、多 Token、多场景的交易，目前聚焦 Uniswap V2 （如添加或移除流动性、swap），为后续分析提供丰富数据。
-	2.	主要组成
-	•	Accounts：5 个本地账户，每个账户拥有足量测试 Token，并持续发起交易。
-	•	Tokens：通过最小代理部署 5 个 MyERC20（WETH、USDC、DAI、TWI、WBTC）。给各账户 mint 大量代币。
-	•	TWSwap：自实现的Uniswap V2（包含 Factory、Router、Pair），可处理 add/remove 流动性、swap。
-	•	模拟器循环：随机或脚本化地对 TWSwapRouter 发起多样化交易（addLiquidity、removeLiquidity、swap），生成持续事件流供后续处理。
-
-## 流程图
-```mermaid
-sequenceDiagram
-    autonumber
-    title Randomized Trading Flow
-
-    participant Sim as Simulator
-    participant Acct as Account i
-    participant Router as TWSwapRouter
-    loop Repeated
-        Sim ->> Acct: Pick random account
-        Sim ->> Acct: Decide operation swap/add/remove
-        Sim ->> Acct: Decide random amounts/time
-
-        Acct ->> Router: Execute operation
-        Router ->> Node: Onchain transaction
-        Node -->> Router: Confirmation
-        Router -->> Acct: Tx result
-        Sim ->> Sim: Sleep random delay
-    end
-```
-
-# 链监听器
-流程：
-1. 使用 go-ethereum 的 ethclient 连接 http://127.0.0.1:8545，监听区块及拉取日志。
-2. 解析链数据，聚合成transaction维度，发送到 Kafka（Topic: chain_transactions_new）。
 
 # 链处理器
-
-
 ### 时序图
 
 ```mermaid
@@ -367,7 +317,7 @@ sequenceDiagram
 		participant event
     participant accountAsset
     participant postgresql
-    processor->>processor:消费topic:chain_transactions_new<br>解析出kafkaMessage
+    processor->>processor:消费topic:dex_transaction<br>解析出kafkaMessage
     	  processor ->> postgresql:从kafkaMessage中获取transaction写入transaction表
     loop 遍历event
 	    processor ->> postgresql:写入event表
@@ -395,20 +345,15 @@ sequenceDiagram
 平均注入价格更新逻辑 ：（oldBalance*average_price+liqudityDelta*(reserve0/reserve1))/(liqudityDelta+oldBalance)，reserve0/reserve1从sync事件中获取 -->
 
 # 链聚合器
-
 目的：按窗口聚合链上数据生成指标。
-
 语言：java
-
 框架: flink
-
-数据源：kafka topic :chain_transactions_new
-
+数据源：kafka topic :dex_transaction
 ## 流程图
 
 ```mermaid
 flowchart TD
- kafka[/topic:chain_transactions_new/]--json反序列化-->KafkaMessage((KafkaMessage))
+ kafka[/topic:dex_transaction/]--json反序列化-->KafkaMessage((KafkaMessage))
  KafkaMessage-->EventExtractor
  EventExtractor-->ProcessEvent((ProcessEvent))
  Pairmetadata((Pairmetadata)) o--connect--o ProcessEvent
@@ -577,6 +522,36 @@ redis key:tokenAddress value:tokenPriceUsd
 ### Mint/Burn:
 
 - 仅增加 txcnt
+
+# 交易模拟器
+	1.	目标：在本地节点中模拟多账户、多 Token、多场景的交易，目前聚焦 Uniswap V2 （如添加或移除流动性、swap），为后续分析提供丰富数据。
+	2.	主要组成
+	•	Accounts：5 个本地账户，每个账户拥有足量测试 Token，并持续发起交易。
+	•	Tokens：通过最小代理部署 5 个 MyERC20（WETH、USDC、DAI、TWI、WBTC）。给各账户 mint 大量代币。
+	•	TWSwap：自实现的Uniswap V2（包含 Factory、Router、Pair），可处理 add/remove 流动性、swap。
+	•	模拟器循环：随机或脚本化地对 TWSwapRouter 发起多样化交易（addLiquidity、removeLiquidity、swap），生成持续事件流供后续处理。
+
+## 流程图
+```mermaid
+sequenceDiagram
+    autonumber
+    title Randomized Trading Flow
+
+    participant Sim as Simulator
+    participant Acct as Account i
+    participant Router as TWSwapRouter
+    loop Repeated
+        Sim ->> Acct: Pick random account
+        Sim ->> Acct: Decide operation swap/add/remove
+        Sim ->> Acct: Decide random amounts/time
+
+        Acct ->> Router: Execute operation
+        Router ->> Node: Onchain transaction
+        Node -->> Router: Confirmation
+        Router -->> Acct: Tx result
+        Sim ->> Sim: Sleep random delay
+    end
+```
 # 决策大脑
 
 决策大脑系统旨在对外部事件进行处理，根据预先配置的策略（以 DAG 形式定义）动态判断和执行动作。系统具有以下通用目标：
@@ -1133,9 +1108,115 @@ query GetTokenRollingMetrics($tokenId: ID!, $limit: Int) {
   }
 }
 ```
+# 项目初始化
+本项目尽量避免繁琐的crud,采用初始化的方式为数据库里的元数据赋值.初始化文件位置：localnode/scripts/initialize.js
+## blockchain初始化
+1. updateInitCodeHash
+2. Deploy Contract
+3. 为account mint Tokens
+4. InitializePairs
+5. 保存deploymentInfo
 
-# 表结构
-## account
+## 数据存储初始化
+### initializeRedis
+redis初始化内容
+1. token_price:{all token address}
+2. tokenMetadata,accountMetadata,pairMetadata from deployment.json
+### initializeDatabase
+根据deployment.json写入token,account表
+account_asset初始化:遍历account,从链上查找所有资产信息（eoa account balance,token balance,pair balance）分别写入asset_type为native,erc20,defiPosition中，bizId分别为1,token_id,pair_id.
+## 定时任务
+### startAccountAssetUpdater
+遍历account获取链上balance，bizId默认为1，bizName,accountAsset为native，写入accountAsset.
+### startTokenUpdater
+
+```伪代码
+for(token in all token){
+
+get totalsupply from localnode
+
+for(相关的pair ){
+
+reserveSum+=reserveInPair
+
+if pair含usdc
+
+token_price=reserve比
+
+}
+
+if token is usdc
+
+token_price=1
+
+security_score，token_age=1～100随机数
+liquidity_usd=reserveSum*token_price
+fdv=mcap=totalsupply*token_price
+更新token_metric表
+
+for(account in all account){
+
+get token balance from localnode
+value_usd=balance*token_price
+ownership=balance/totalsupply
+更新token _holder表
+}
+}
+```
+### tokenRollingMetric
+使用定时任务写token_rolling_metric表，周期为20s,end_time与整点对齐，token_price_usd从redis取，mcap=totalsupply*tokenprice ,totalsupply从链上查询。这张表用于前端绘制折线图
+
+# 数据格式
+## kafka 
+
+**topic:dex_transaction** 
+```json
+{    "transaction": {
+      "type": "object",
+      "properties": {
+        "blockNumber": { "type": "integer" },
+        "blockHash":   { "type": "string" },
+        "timestamp":   { "type": "integer" },
+        "transactionHash": { "type": "string" },
+        "transactionIndex":{ "type": "integer" },
+        "transactionStatus":      { "type": "string" },
+        "gasUsed":     { "type": "integer" },
+        "gasPrice":    { "type": "string" },
+        "nonce":       { "type": "integer" },
+        "fromAddress":        { "type": "string" },
+        "toAddress":          { "type": "string" },
+        "transactionValue":       { "type": "string" },
+        "inputData":   { "type": "string" },
+        "chainID":     { "type": "string" }
+      },
+      "required": ["blockNumber","transactionHash","fromAddress","toAddress","chainID"]
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "eventName": { "type": "string" },
+          "contractAddress": { "type": "string" },
+          "logIndex":  { "type": "integer" },
+          "blockNumber": { "type": "integer" },
+          "topics":    {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "eventData":      { "type": "string" },
+          "decodedArgs": { "type": "object" }
+        },
+        "required": ["eventName","contractAddress","logIndex"]
+      }
+    }
+  }
+}
+
+```
+## 表结构
+
+### account
 ```sql
 CREATE TABLE account (
     id SERIAL PRIMARY KEY,
@@ -1180,10 +1261,9 @@ CREATE TABLE account_transfer_history (
 
 
 ```
-## transaction
+### transaction
 
 ```sql
-
 
 CREATE TABLE transaction (
   id                BIGSERIAL       PRIMARY KEY,
@@ -1228,13 +1308,11 @@ CREATE TABLE transfer_event (
     CONSTRAINT fk_te_event FOREIGN KEY (event_id) REFERENCES event(id),
     CONSTRAINT fk_te_token FOREIGN KEY (token_id) REFERENCES token(id)
 );
-
 CREATE INDEX idx_te_token_timestamp ON transfer_event(token_id, block_timestamp);
 CREATE INDEX idx_te_from_address ON transfer_event(from_address);
 CREATE INDEX idx_te_to_address ON transfer_event(to_address);
-
 ```
-## token
+### token
 ```sql
 
 CREATE TABLE token (
@@ -1334,7 +1412,7 @@ CREATE TABLE token_holder(
 
 
 ```
-## twswap
+### twswap
 ``` sql
 CREATE TABLE twswap_pair (
   id                     BIGSERIAL     PRIMARY KEY,
@@ -1367,7 +1445,7 @@ CREATE TABLE twswap_pair_metric (
 );
 
 ```
-## 策略
+### 策略
 ```sql
 -- 策略管理相关表
 -- CREATE TABLE strategies (
@@ -1406,7 +1484,7 @@ CREATE TABLE twswap_pair_metric (
 -- );
 
 ```
-## view
+### view
 ```sql
 ----------------------------------------
 -- 表：account_asset_view（读表，通常为物化视图或 CDC 同步结果表）

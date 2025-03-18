@@ -78,7 +78,7 @@ services:
     environment:
       - APP_ENV=PROD
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - INPUT_TOPIC=chain_transactions_new
+      - INPUT_TOPIC=dex_transaction
       - KAFKA_GROUP_ID=pair_metrics_processor
       - JDBC_URL=jdbc:postgresql://postgres:5432/twilight
       - JDBC_USER=twilight

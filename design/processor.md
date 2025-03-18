@@ -10,7 +10,7 @@
 
 ```mermaid
 sequenceDiagram
-    participant Topic as Kafka Topic<br>(chain_transactions_new)
+    participant Topic as Kafka Topic<br>(dex_transaction)
     participant Processor as Account Processor
     participant DB_Account as PostgreSQL<br>(account,twswap_pair)
     participant DB_Asset as PostgreSQL<br>(account_asset)

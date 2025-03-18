@@ -2,7 +2,7 @@ kafka:
   brokers:
     - localhost:9092
   topics:
-    chain_transactions: chain_transactions_new
+    chain_transactions: dex_transaction
   consumer:
     poll_timeout_ms: 1000
     max_poll_records: 500

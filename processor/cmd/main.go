@@ -19,7 +19,7 @@ func main() {
 	redisAddr := flag.String("redis", "localhost:6379", "Redis address")
 	kafkaBrokers := flag.String("kafka-brokers", "localhost:9092", "Comma-separated list of Kafka brokers")
 	kafkaGroupID := flag.String("kafka-group", "twilight-processor", "Kafka consumer group ID")
-	kafkaTopics := flag.String("kafka-topics", "chain_transactions_new", "Comma-separated list of Kafka topics")
+	kafkaTopics := flag.String("kafka-topics", "dex_transaction", "Comma-separated list of Kafka topics")
 	flag.Parse()
 
 	// Create logger

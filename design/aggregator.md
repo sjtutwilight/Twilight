@@ -2,13 +2,13 @@
 
 
 # 链聚合器
-使用flink进行指标计算，java作为开发语言。从chain_transactions_new中解析出event列表，遍历列表进行处理sink到数据库。数据库结构在TableStucture.md. 需要对event中的reserve,amount数据除10的18次方进行换算。
+使用flink进行指标计算，java作为开发语言。从dex_transaction中解析出event列表，遍历列表进行处理sink到数据库。数据库结构在TableStucture.md. 需要对event中的reserve,amount数据除10的18次方进行换算。
 ## 流程图
 ```mermaid
 flowchart TD
 	job初始化--1查询token_reserve-->twswap_pair_metric
 	job初始化--2写入tokenPriceUsd-->redis
- kafka((topic:chain_transactions_new))--json反序列化-->stream:Transaction
+ kafka((topic:dex_transaction))--json反序列化-->stream:Transaction
  stream:Transaction--flatmap -->stream:Event
  broadcaststate--获取pairmetadata-->twswap_pair
 

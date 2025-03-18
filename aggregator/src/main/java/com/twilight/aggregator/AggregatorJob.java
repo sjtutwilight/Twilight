@@ -1,42 +1,37 @@
 package com.twilight.aggregator;
 
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.state.MapStateDescriptor;
-
-import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.streaming.api.datastream.AsyncDataStream;
 import org.apache.flink.streaming.api.datastream.BroadcastStream;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.OutputTag;
-import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.twilight.aggregator.config.FlinkConfig;
-import com.twilight.aggregator.model.ProcessEvent;
 import com.twilight.aggregator.model.KafkaMessage;
 import com.twilight.aggregator.model.Pair;
 import com.twilight.aggregator.model.PairMetadata;
-import com.twilight.aggregator.model.PairMetric;
+import com.twilight.aggregator.model.ProcessEvent;
 import com.twilight.aggregator.model.Token;
 import com.twilight.aggregator.model.TokenRecentMetric;
+import com.twilight.aggregator.process.EventEnrichmentProcessor;
 import com.twilight.aggregator.process.EventExtractor;
-
+import com.twilight.aggregator.process.EventSplitProcessor;
+import com.twilight.aggregator.process.token.TokenWindowManager;
 import com.twilight.aggregator.serialization.KafkaMessageDeserializer;
 import com.twilight.aggregator.sink.PostgresSink;
-import com.twilight.aggregator.source.PairMetadataSource;
-import com.twilight.aggregator.process.pair.PairWindowManager;
-import com.twilight.aggregator.process.token.TokenWindowManager;
-import com.twilight.aggregator.model.TokenRollingMetric;
-import com.twilight.aggregator.process.EventEnrichmentProcessor;
-import org.apache.flink.streaming.api.datastream.AsyncDataStream;
-import java.util.concurrent.TimeUnit;
 import com.twilight.aggregator.source.AsyncPriceLookupFunction;
-import com.twilight.aggregator.process.EventSplitProcessor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.twilight.aggregator.source.PairMetadataSource;
 
 public class AggregatorJob {
         private static final Logger log = LoggerFactory.getLogger(AggregatorJob.class);
@@ -143,19 +138,19 @@ public class AggregatorJob {
                 // log.debug("Created token rolling metrics stream");
 
                 // Process pairs
-                DataStream<PairMetric> pairMetrics = PairWindowManager.createHierarchicalWindows(
-                                pairStream.keyBy(Pair::getPairId));
-                log.debug("Created pair metrics stream");
+                // DataStream<PairMetric> pairMetrics = PairWindowManager.createHierarchicalWindows(
+                //                 pairStream.keyBy(Pair::getPairId));
+                // log.debug("Created pair metrics stream");
 
                 // Add sinks
                 log.debug("Adding sink for pair metrics");
-                pairMetrics
-                                .map(metric -> {
-                                        log.debug("Sending PairMetric to sink: {}", metric);
-                                        return metric;
-                                })
-                                .addSink(PostgresSink.createPairMetricSink())
-                                .name("Pair Metrics Sink");
+                // pairMetrics
+                //                 .map(metric -> {
+                //                         log.debug("Sending PairMetric to sink: {}", metric);
+                //                         return metric;
+                //                 })
+                //                 .addSink(PostgresSink.createPairMetricSink())
+                //                 .name("Pair Metrics Sink");
 
                 // log.debug("Adding sink for token recent metrics");
                 tokenRecentMetrics
