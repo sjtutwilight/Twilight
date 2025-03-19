@@ -2,12 +2,9 @@
 主要工作流：在本地节点模拟链上交易，监听本地node数据，实时处理后作为agent输入并进行大盘展示，
 ps:本文档为给agent参考的唯一信任源，略凌乱。
 ## 前端展示
-<img width="700" alt="截屏2025-03-19 08 22 32" src="https://github.com/user-attachments/assets/3753d4c6-72fc-4a24-8e0b-14687ecce216" />
-<img width="700" alt="截屏2025-03-19 08 23 14" src="https://github.com/user-attachments/assets/79bca615-0cda-4733-af0e-9631edcc9747" />
-<img width="700" alt="截屏2025-03-19 08 23 27" src="https://github.com/user-attachments/assets/2691d638-a501-4931-afbe-6c95cb23b51c" />
-<img width="700" alt="截屏2025-03-19 08 23 57" src="https://github.com/user-attachments/assets/728f8c96-74e8-4149-bde0-0eee2b362db1" />
-<img width="700" alt="截屏2025-03-19 08 24 50" src="https://github.com/user-attachments/assets/b464e301-e8c2-43c2-befb-7833ff41f4a3" />
-<img width="700" alt="截屏2025-03-19 08 25 06" src="https://github.com/user-attachments/assets/f47b4255-f924-4599-9bd6-2459bfd918c8" />
+<img width="600" alt="截屏2025-03-19 08 22 32" src="https://github.com/user-attachments/assets/3753d4c6-72fc-4a24-8e0b-14687ecce216" /><img width="600" alt="截屏2025-03-19 08 23 14" src="https://github.com/user-attachments/assets/79bca615-0cda-4733-af0e-9631edcc9747" />
+<img width="600" alt="截屏2025-03-19 08 23 27" src="https://github.com/user-attachments/assets/2691d638-a501-4931-afbe-6c95cb23b51c" /><img width="600" alt="截屏2025-03-19 08 23 57" src="https://github.com/user-attachments/assets/728f8c96-74e8-4149-bde0-0eee2b362db1" />
+<img width="600" alt="截屏2025-03-19 08 24 50" src="https://github.com/user-attachments/assets/b464e301-e8c2-43c2-befb-7833ff41f4a3" /><img width="600" alt="截屏2025-03-19 08 25 06" src="https://github.com/user-attachments/assets/f47b4255-f924-4599-9bd6-2459bfd918c8" />
 
 
 
