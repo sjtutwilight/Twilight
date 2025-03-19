@@ -3,18 +3,15 @@
 主要工作流：在本地节点模拟链上交易，监听本地node数据，实时处理后作为agent输入并进行大盘展示，
 ps:本文档为给agent参考的唯一信任源，略凌乱。
 ## 前端展示
+<img width="1132" alt="截屏2025-03-19 08 25 06" src="https://github.com/user-attachments/assets/f47b4255-f924-4599-9bd6-2459bfd918c8" />
+<img width="978" alt="截屏2025-03-19 08 24 50" src="https://github.com/user-attachments/assets/b464e301-e8c2-43c2-befb-7833ff41f4a3" />
+<img width="1319" alt="截屏2025-03-19 08 23 57" src="https://github.com/user-attachments/assets/728f8c96-74e8-4149-bde0-0eee2b362db1" />
+<img width="1141" alt="截屏2025-03-19 08 23 27" src="https://github.com/user-attachments/assets/2691d638-a501-4931-afbe-6c95cb23b51c" />
+<img width="1512" alt="截屏2025-03-19 08 23 14" src="https://github.com/user-attachments/assets/79bca615-0cda-4733-af0e-9631edcc9747" />
+
+<img width="1489" alt="截屏2025-03-19 08 22 32" src="https://github.com/user-attachments/assets/3753d4c6-72fc-4a24-8e0b-14687ecce216" />
+
 ### 分析模块
-![截屏2025-03-18 18.42.46.png](attachment:0ae74884-a2d0-4909-8379-26081f4a5bcd:截屏2025-03-18_18.42.46.png)
-
-![截屏2025-03-18 18.43.01.png](attachment:d1d10135-f12c-4d85-8cee-11b3a13a3de5:截屏2025-03-18_18.43.01.png)
-
-![截屏2025-03-18 18.43.14.png](attachment:95cb8e65-4d9a-4c51-ae91-bf9125fc5179:截屏2025-03-18_18.43.14.png)
-
-![截屏2025-03-18 18.43.31.png](attachment:6db63a67-a25d-4888-96dd-d013c3e7eb21:截屏2025-03-18_18.43.31.png)
-
-![截屏2025-03-18 18.43.50.png](attachment:f3b961e5-4559-44e0-8026-4bdf5a106680:截屏2025-03-18_18.43.50.png)
-
-![截屏2025-03-18 18.44.57.png](attachment:6d36fbd6-7e78-4c96-9c0a-717606db73ba:截屏2025-03-18_18.44.57.png)
 ### 离线签名交易
 ![image](https://github.com/user-attachments/assets/73599349-0b50-422c-af73-d4715d01ad89)
 
